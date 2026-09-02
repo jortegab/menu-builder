@@ -27,11 +27,13 @@ from decimal import ROUND_HALF_UP, Decimal
 from .costing import CostResult
 from .units import IncompatibleUnits, convert
 
-# Deep enough for any real kitchen (a plato using a salsa using a fondo
-# using a mirepoix is 4), shallow enough that a pathological graph fails
-# fast instead of eating the request. PLAN.md Q4 asks the operator what the
-# real depth is; if the answer is 2 this can tighten.
-MAX_DEPTH = 8
+# The operator's real kitchen nests three levels -- fondo -> salsa -> plato
+# (PLAN.md Q4, answered 2026-09-02). Five leaves two levels of headroom for
+# a preparación nobody has modelled yet, while staying tight enough that a
+# runaway nest surfaces as `RecipeTooDeep` at the fourth or fifth hop rather
+# than the eighth. Raise it if a real recipe ever needs the room; do not
+# raise it to make a suspicious graph load.
+MAX_DEPTH = 5
 
 _CENT = Decimal("0.01")
 

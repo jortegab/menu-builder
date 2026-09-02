@@ -9,7 +9,7 @@ e-invoice ingestion app, over a read-only JSON API. This app never
 recomputes upstream's price math and never writes to it.
 
 **Read `PLAN.md` before proposing architecture.** It has the full design,
-16 numbered decisions with rationale, 8 non-negotiables, and the open
+21 numbered decisions with rationale, 8 non-negotiables, and the open
 questions. Do not redesign what is already decided there — if you think a
 decision is wrong, say so and argue it, but do not silently deviate.
 
@@ -76,7 +76,7 @@ backend/app/
   routers/
     recetas.py      Phase 0 stub
 tests/              unittest, one module per pure service
-PLAN.md             the design. 16 decisions, 8 non-negotiables
+PLAN.md             the design. 21 decisions, 8 non-negotiables
 ```
 
 **The three `services/` modules are pure on purpose** — no DB, no network,
@@ -169,9 +169,24 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
   bug** (D12). An empty window with a non-empty series falls back to the
   newest observation outside it and flags its age. Silence would hide a
   delisted ingredient; refusal would break a menu over one seasonal item.
-- **A `null` `precio_efectivo_crc` means no exchange rate existed** for
-  that invoice's date. Drop the observation and count the drop; never
-  substitute the USD figure, and never 0.
+- **Never pass upstream's `precio_unitario_crc` through raw** (D19). That
+  column is `NULL` for *every CRC purchase by design* — 17 272 of 17 645
+  live rows. The API coalesces it: the CRC price is the converted figure for
+  a USD line and `precio_efectivo` itself for a CRC or `NULL`-currency line.
+  A pass-through plus a "drop the nulls" rule discards 98% of the catalog,
+  and it fails as **silence** — the app just reports that nothing can be
+  costed. In the coalesced payload a `null` therefore means exactly one
+  thing: a USD line whose date had no exchange rate. Drop those, count the
+  drop, and never substitute the USD figure or 0.
+- **`unidad_medida` is almost never usable.** 85% of the live catalog says
+  `Unid` or `Otros`, and `unidad_comercial` is `NULL` on 96.7% of purchase
+  lines. §7.2's fallback rule 3 will rarely fire: the LLM's description
+  parsing and the category default are the system, not the fallbacks. Do not
+  build as though the XML units will carry the load.
+- **A bad invoice line is not a price move.** 6% of products with enough
+  history carry one (PEREJIL at ₡120.79 among ₡850–1 190). This is why the
+  default method is `median_window` (D17) — do not "simplify" it to an
+  average or to `last` without re-reading that decision.
 - **An incompatible unit in a costed line raises**, it does not resolve to
   "no price". It means a row was written that save-time validation should
   have refused, and it must not send the operator looking in the wrong
@@ -181,7 +196,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 51 tests today, all against the
+`unittest`, no pytest, matching upstream. 55 tests today, all against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the

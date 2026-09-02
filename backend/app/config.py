@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     upstream_timeout_seconds: int = 15
 
     # Costing defaults (PLAN.md §7.4), overridable per insumo from Ajustes.
-    costing_method_default: str = "weighted_avg_window"
+    costing_method_default: str = "median_window"
     costing_window_days_default: int = 90
 
     # LLM-assisted mapping (PLAN.md §8) -- an accelerator, never a

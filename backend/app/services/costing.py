@@ -39,7 +39,17 @@ METHODS = (
     "min_window",
 )
 
-DEFAULT_METHOD = "weighted_avg_window"
+# Median, not the average, and the choice is evidence-based rather than
+# taste (PLAN.md Q3, answered 2026-09-02 against the live catalog): 6% of
+# the products with 3+ purchases in a 90-day window carry at least one bad
+# invoice line -- PEREJIL priced at ₡120.79 among ₡850-1190 is the canonical
+# one. A median ignores it; a mean absorbs it, and on an insumo with only
+# three observations it absorbs it hard. For the 54% of products with <=2
+# purchases per window the median is arithmetically identical to every
+# other method anyway, so the robustness costs nothing where it is not
+# needed. `weighted_avg_window` stays one setting away for the insumos
+# where "what I actually paid on average" is the better question.
+DEFAULT_METHOD = "median_window"
 DEFAULT_WINDOW_DAYS = 90
 
 # Above this, merma is a typo, not a yield. The divisor's asymptote turns a

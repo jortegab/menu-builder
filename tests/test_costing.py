@@ -104,6 +104,49 @@ class TestWindow(unittest.TestCase):
         self.assertEqual(r.antiguedad_dias, 200)
 
 
+class TestOutlierRobustness(unittest.TestCase):
+    """Pins D17 -- why `median_window` is the default and not an average.
+
+    The series is real: PEREJIL from Inversiones Hevar V&R, whose 90-day
+    window holds prices between ₡850 and ₡1 190 plus one line at ₡120.79.
+    That line is a bad invoice, not a price move, and 6% of the products
+    with enough history carry one like it.
+    """
+
+    SERIE = [
+        obs(75, "1190.0990"), obs(72, "1190.0990"), obs(68, "1190.0990"),
+        obs(65, "120.7921"),  # <- the bad line
+        obs(61, "1019.8020"), obs(58, "850.4951"), obs(56, "1190.0990"),
+        obs(54, "1190.0000"), obs(51, "850.0000"), obs(48, "1190.0000"),
+        obs(44, "850.0000"), obs(41, "850.0000"), obs(37, "850.0000"),
+        obs(33, "1120.0000"),
+    ]
+
+    def test_median_ignores_the_bad_line(self):
+        r = price_from_series(self.SERIE, "median_window", 90, HOY)
+        self.assertGreater(r.valor, Decimal(1000))
+
+    def test_mean_absorbs_it(self):
+        media = price_from_series(self.SERIE, "avg_window", 90, HOY).valor
+        mediana = price_from_series(self.SERIE, "median_window", 90, HOY).valor
+        self.assertLess(media, mediana)
+
+    def test_the_default_is_the_robust_one(self):
+        from app.services.costing import DEFAULT_METHOD, DEFAULT_WINDOW_DAYS
+
+        self.assertEqual(DEFAULT_METHOD, "median_window")
+        self.assertEqual(DEFAULT_WINDOW_DAYS, 90)
+
+    def test_median_equals_mean_on_two_observations(self):
+        # Why the robustness is free: for the 54% of products with <=2
+        # purchases in a window, every method agrees anyway.
+        serie = [obs(30, "100"), obs(10, "200")]
+        self.assertEqual(
+            price_from_series(serie, "median_window", 90, HOY).valor,
+            price_from_series(serie, "avg_window", 90, HOY).valor,
+        )
+
+
 class TestMerma(unittest.TestCase):
     def test_merma_divides_over_what_survives(self):
         # ₡4 000/kg at 12% merma is ₡4 545.45 per usable kg.

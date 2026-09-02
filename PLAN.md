@@ -266,15 +266,37 @@ GET /api/v1/productos/{id}/compras?desde=<fecha>&hasta=<fecha>
 | `cantidad`, `unidad_comercial` | as invoiced |
 | `moneda` | `CRC` \| `USD` |
 | `precio_efectivo` | net of IVA, net of the line's discount, in `moneda`, in `unidad_comercial` |
-| `precio_efectivo_crc` | the same figure in CRC at that date's rate; `null` if no rate was available — **never a guess** |
+| `precio_efectivo_crc` | the same figure **always expressed in CRC** — see the coalescing rule below; `null` only when a USD line had no rate |
 | `unit_ratio` | how many base units one `unidad_comercial` is worth |
 | `precio_efectivo_normalizado_crc` | `precio_efectivo_crc / unit_ratio` — **the figure this app costs from** |
 | `iva_pct`, `descuento_pct` | for display and audit |
 | `clave`, `numero_linea` | the natural key back to the invoice |
 
-**Three properties this app depends on and upstream must not quietly
+**Four properties this app depends on and upstream must not quietly
 change:**
 
+- **The endpoint must coalesce the CRC figure; it must not pass
+  `ProductPurchase.precio_unitario_crc` through raw.** That column is
+  `NULL` for *every CRC purchase by design* — upstream's own model
+  docstring: *"None for a CRC purchase (no conversion needed)."* Verified
+  against the live database on 2026-09-02: **17 272 of 17 645 rows are CRC
+  with a `NULL` `precio_unitario_crc`**, 63 are USD (all of which do have a
+  rate), and 310 have a `NULL` `moneda` entirely. An earlier draft of this
+  plan said to drop observations with a `null` CRC price — that rule would
+  have silently discarded **98% of the catalog** and left almost every
+  insumo with no cost. The contract is therefore:
+
+  ```
+  precio_efectivo_crc = precio_efectivo_crc_column  if moneda = 'USD'
+                      = precio_efectivo             if moneda in ('CRC', NULL)
+  ```
+
+  A `NULL` `moneda` is treated as CRC: all 310 such rows fall between
+  2024-07-01 and 2025-08-12, and Hacienda's `CodigoMoneda` is optional with
+  CRC as its default. `null` therefore survives in the payload for exactly
+  one case — a USD line whose date had no exchange rate — and *those*
+  observations are dropped from the series, with the drop counted and shown
+  on the insumo's cost panel.
 - `precio_efectivo_normalizado_crc` is expressed in `unidad_comercial_base`,
   *not* in whatever unit a given invoice happened to use. This is what makes
   a case purchase comparable to a bottle purchase, and it is why
@@ -282,10 +304,12 @@ change:**
 - Notas de crédito are already excluded — upstream's non-negotiable #5 means
   their lines never became `ProductPurchase` rows at all. This app must not
   try to net them again.
-- `precio_efectivo_crc` is `null`, not 0 and not the USD figure, when no
-  exchange rate existed for that date. Observations with a `null` here are
-  **dropped from the series**, and the count of dropped observations is
-  shown on the insumo's cost panel.
+- The endpoint computes `unit_ratio` with upstream's existing
+  **`services/products.infer_unit_ratios_for_products`** (Q1, answered):
+  ratios are derived per request from a product's whole price history, not
+  stored, and that batch helper already exists and already does the whole
+  list in one query. Do not add a stored column for this and do not call the
+  single-product version in a loop.
 
 ### 5.3 Sync into the local mirror
 
@@ -446,6 +470,26 @@ fired recorded in `factor_origen`:
 A `sin_resolver` fuente never contributes to a price series (non-negotiable
 #7). It is a queue item, not a zero.
 
+**Rule 3 will almost never fire, and that is a measurement, not a guess.**
+Across the live catalog's 1 420 products, `unidad_medida` is `Unid` on 900
+and `Otros` on 300 — **85% carry no usable unit at all**. Only 161 say `Kg`
+(in two spellings), 52 `Gal`, and a handful the rest. `unidad_comercial` is
+worse: `NULL` on 17 059 of 17 645 purchase lines (96.7%), with only `CJ`
+(485), `BOT` (86) and `PZA` (15) ever populated.
+
+Two consequences the build must plan around rather than discover:
+
+- **The LLM's description parsing and the category default carry nearly all
+  the weight.** Rules 2 and 4 are the system, not the fallbacks. Budget
+  prompt quality accordingly, and make the manual factor field easy to
+  reach — it is going to be used.
+- **Upstream's unit normalization is largely inert for this catalog.** It
+  matters for exactly the case it was built for (FEMSA and Distribuidora La
+  Florida selling by `CJ` and `BOT`), and for nothing else. It still belongs
+  in the contract — those products are real — but do not expect it to
+  rescue a produce line, because produce arrives with no commercial unit at
+  all.
+
 ### 7.3 Merma
 
 `merma_pct` is the fraction of a purchased quantity that never reaches the
@@ -489,6 +533,37 @@ The method reduces that series to one number:
 app-wide default method and window live in Ajustes; an insumo overrides
 either.
 
+**The default is `median_window` over 90 days** (Q3, answered 2026-09-02),
+and the choice was made against the live data rather than by taste:
+
+| measurement (live catalog, 90-day window) | value |
+|---|---|
+| products with ≥1 purchase in the window | 396 |
+| …with exactly 1 (every method gives the same answer) | 161 (41%) |
+| …with ≤2 (median ≡ mean) | 213 (54%) |
+| …with ≥3, where the method actually matters | 183 |
+| of those, carrying ≥1 outlier (<½ or >2× the median) | **11 (6%)** |
+| mean deviation from median: `weighted_avg_window` | 2.81% |
+| mean deviation from median: `avg_window` | 4.75% |
+| mean deviation from median: `last` | 4.16% (**max 92%**) |
+
+The deciding case is real and named: `PEREJIL` from Inversiones Hevar V&R
+has 21 purchases in the window, priced between ₡850 and ₡1 190, plus one
+line at **₡120.79**. That is a bad invoice line, not a price move. A median
+ignores it outright; a mean absorbs it, and on an insumo with only three
+observations it absorbs it hard.
+
+The robustness is also free where it is not needed: for the 54% of products
+with two or fewer purchases in a window, the median is arithmetically
+identical to every other method. `weighted_avg_window` — the honest average
+actually paid, and empirically the closest alternative to the median at
+2.81% — stays one setting away per insumo, for the ingredients where "what I
+paid on average" is the better question than "what it typically costs".
+
+`last` is deliberately *not* the default despite being the most intuitive:
+its worst-case deviation from the median on this catalog is 92%, which is a
+plate whose cost doubles because of one line.
+
 **Two subtleties worth stating, because both are easy to get wrong:**
 
 - `last` is the last observation *across suppliers*, not per supplier. If
@@ -523,10 +598,17 @@ only here: put in 3 000 g, declare a yield of 2 500 g, and the 500 g of
 evaporation is priced into every gram that survived.
 
 **Traversal** is depth-first with memoization per request — a salsa used by
-six platos is costed once. Depth is capped at **8** and cycles are detected
+six platos is costed once. Depth is capped at **5** and cycles are detected
 during traversal even though they are rejected at write time
 (non-negotiable #5), because a defensive check costs nothing and a hung
 page costs an evening.
+
+The cap is 5 because the kitchen really nests three — **fondo → salsa →
+plato** (Q4, answered 2026-09-02) — leaving two levels of headroom for a
+preparación nobody has modelled yet while staying tight enough that a
+runaway nest surfaces at the fourth or fifth hop instead of the eighth.
+Raise it if a real recipe needs the room; never raise it to make a
+suspicious graph load.
 
 **Incompleteness propagates, cost does not.** If any leaf resolves to no
 price, `costo_total` is `null`, the receta's state is `incompleto`, and the
@@ -571,8 +653,12 @@ and safe: **an accelerator, never a dependency.**
 
 **The rules, inherited:**
 
-- Called **once per new producto**, never per purchase. Call volume tracks
-  distinct products (~hundreds), not invoice lines (~tens of thousands).
+- Called **once per new producto**, never per purchase. The live catalog
+  makes this concrete (Q2, answered 2026-09-02): **1 420 products across 32
+  suppliers over 17 645 purchase lines**, spanning 2024-06-05 to 2026-09-01.
+  So the one-time backfill is ~1 400 calls, not ~17 600 — a ratio of 12:1,
+  and the reason the "once per producto" rule is a budget decision rather
+  than a style one. Steady state is a handful of calls a week.
 - Called via `httpx` directly, not the `anthropic` SDK — same as upstream's
   `hacienda.py`, `exchange_rate.py` and `llm_categorize.py`, so this adds no
   dependency for one endpoint.
@@ -594,6 +680,25 @@ by suggested insumo, so the operator confirms *"these four rows are all
 pechuga deshuesada"* in one action rather than four. Rejecting a suggestion
 is one click and is remembered, so the same wrong suggestion is not offered
 again.
+
+**And the queue must be filtered before it is drained, or it will not be
+drained.** 1 420 rows is not a sitting. The live numbers say where the real
+work is:
+
+| slice | products |
+|---|---|
+| whole catalog | 1 420 |
+| minus non-food categories (Empaques 123, Menaje 112, Limpieza 80, Utilidades 49, Higiene 36, Oficina 15) | **1 005** |
+| of those, bought in the last 180 days | **412** |
+| of those, bought in the last 90 days | **301** |
+
+So the queue defaults to **food categories, bought in the last 180 days** —
+about 400 rows — sorted by purchase volume, with the rest reachable behind a
+filter. Combined with lazy mapping (an insumo only has to exist when a
+recipe wants it), that is a drainable amount of work. Bulk confirm is
+therefore a day-one requirement, not a nice-to-have: at 1 420 rows,
+one-at-a-time confirmation is the difference between a queue that gets
+emptied and one that gets abandoned.
 
 ---
 
@@ -775,11 +880,36 @@ build this, and the menu-wide view of which plates are drifting.
 `/api/v1/ventas` upstream (§5.4 B) lands here too, giving a real
 whole-restaurant food-cost % denominator instead of a target.
 
-Open before building: does the plate price include IVA and servicio (CR
-menus quote all three ways), and is the target food-cost a single number or
-per category. Both change the model, so neither is assumed here.
+**The menu price includes IVA *and* servicio** (Q5, answered 2026-09-02), so
+every margin figure starts by stripping both off an all-in number. **And it
+cannot be stripped with one constant** — this was checked against the real
+sales file rather than assumed, and the arithmetic does not match the
+textbook:
 
-### Phase 3 — Ingeniería de menú *(outline — blocked on data)*
+| | expected | actual (`Ventas_Totales.xlsx`, Dec 2024 sample) |
+|---|---|---|
+| servicio ÷ subtotal | 10.0% | **8.1% – 9.2%** |
+| IVA ÷ subtotal | 13.0% | 12.75% – 12.95% |
+| IVA ÷ (subtotal + servicio) | 13.0% | 11.95% |
+
+Two things follow. **IVA is computed on the subtotal, not on subtotal +
+servicio** — the ratios only land near 13% against the subtotal. And
+**servicio does not apply to every line**: at a flat 10% it would be exactly
+10% of the subtotal, and it is consistently one to two points below, which
+means some share of sales carries no servicio at all (takeout, or a category
+that is excluded).
+
+So Phase 2 cannot derive a net price from a menu price with a single
+divisor. It needs **per-plato (or per-category) flags — `lleva_servicio` and
+an `iva_pct`** — and the all-in price is decomposed through those. The
+upstream `Venta total = Subtotal + Servicio + IVA − Descuento` identity does
+reconcile exactly, so the file is trustworthy; it is the per-line
+composition that varies.
+
+Still open before building: is the target food-cost a single number or per
+category (§13 Q7).
+
+### Phase 3 — Ingeniería de menú *(outline — no longer blocked)*
 
 Popularity × profitability quadrants (estrellas / puzzles / caballos de
 batalla / perros), contribution margin per plate weighted by how often it
@@ -787,14 +917,24 @@ actually sells. Plus the variance work `/api/v1/inventarios` (§5.4 A)
 unlocks: theoretical consumption from recipes vs. actual movement from
 inventory.
 
-**Blocked, and honestly so.** Menu engineering needs per-dish sales mix,
-which does not exist in either app: upstream's `/ventas` reads an
-operator-maintained Excel of *daily totals* (Fecha, Facturas, Subtotal,
-Servicio, IVA, Descuento, Venta total), with no per-dish breakdown, and
-upstream's real sales ingestion (its §6.8/§6.9) is unbuilt. So Phase 3
-begins with a question that is not a menu-builder question at all: can the
-POS export a per-dish sales report, and where does it land. Until that is
-answered, Phase 3 is a placeholder and should not be designed further.
+**The POS can export sales by dish** (Q6, answered 2026-09-02), which is
+what this phase was waiting on. Note the data does *not* come through
+`restaurant-manager`: upstream's `/ventas` reads an operator-maintained
+Excel of daily totals only (Fecha, Facturas, Subtotal, Servicio, IVA,
+Descuento, Venta total) with no per-dish breakdown, and its real sales
+ingestion (its §6.8/§6.9) is still unbuilt. The per-dish export lands
+**here**, through §5.4 D's `POST /api/v1/ventas-mix` or a file drop
+mirroring how upstream reads its own spreadsheets.
+
+The one genuinely hard problem this phase inherits is **matching an exported
+dish name to a `receta`** — the same identity problem as product→insumo
+mapping, one level up, and it should reuse the same shape: an LLM
+suggestion, a review queue, human confirmation, and a remembered rejection.
+A POS dish name drifts (`Pollo plancha`, `POLLO A LA PLANCHA`, `Pollo
+Plancha c/ ensalada`) exactly the way a supplier's product description does.
+
+Still open before building: the export's format and where the file lands
+(§13 Q8).
 
 ---
 
@@ -825,25 +965,41 @@ answered, Phase 3 is a placeholder and should not be designed further.
 
 ## 13. Open questions
 
-Answer before the step they belong to; none blocks Phase 0.
+### Answered 2026-09-02
 
-1. **Q1 (blocks 1.0).** Does upstream expose `precio_efectivo_normalizado_crc`
-   as a stored figure or compute it per request? It is derived today
-   (`infer_unit_ratios` runs over a product's whole history), so the
-   endpoint recomputes — fine at catalog scale, worth confirming before
-   the sync pulls thousands of rows.
-2. **Q2 (blocks 1.3).** How many distinct productos are actually in the
-   live catalog? It sets the LLM budget and decides whether the mapping
-   queue needs bulk actions on day one or can start one-at-a-time.
-3. **Q3 (blocks 1.4).** Default costing method: `weighted_avg_window` over
-   90 days is the recommendation (honest average paid, robust to a single
-   odd invoice, stable with two suppliers). Confirm, or say which stance
-   the kitchen actually wants.
-4. **Q4 (blocks 1.5).** Do any preparaciones nest more than two deep in
-   practice? Depth 8 is a guess; if the real answer is 2, the cap can be
-   tighter and the UI simpler.
-5. **Q5 (blocks 2).** Does a menu price quote net, +IVA, or +IVA+servicio?
-6. **Q6 (blocks 3).** Can the POS export per-dish sales?
+Q1–Q6 are closed. Each answer is recorded in the section it affects rather
+than only here, and the two that were settled by *measuring* rather than by
+asking are marked — those are facts about the live data, and they expire if
+the data changes.
+
+| # | question | answer | where it lives |
+|---|---|---|---|
+| Q1 | Is `precio_efectivo_normalizado_crc` stored or computed? | **Computed** per request. `services/products.infer_unit_ratios_for_products` already exists and does a whole list in one query — use it; add no stored column *(measured)* | §5.2 |
+| Q2 | How big is the catalog? | **1 420 products, 32 suppliers, 17 645 purchase lines**, 2024-06-05 → 2026-09-01. 1 005 are food; 412 bought within 180 days *(measured)* | §8 |
+| Q3 | Default costing method? | **`median_window`, 90 days** — 6% of eligible products carry a bad invoice line, and for 54% the median is identical to every alternative anyway *(measured, then confirmed)* | §7.4 |
+| Q4 | How deep do preparaciones nest? | **Three** (fondo → salsa → plato). Depth cap set to 5, keeping two levels of headroom | §7.5 |
+| Q5 | What does a menu price include? | **IVA and servicio, both.** And it cannot be stripped with one constant — IVA is on the subtotal, and servicio does not apply to every line *(confirmed against the real sales file)* | §11, Phase 2 |
+| Q6 | Can the POS export per-dish sales? | **Yes.** Phase 3 is unblocked; the data lands here, not through upstream | §11, Phase 3 |
+
+### Still open
+
+Neither blocks Phase 1; each blocks the phase it names.
+
+1. **Q7 (blocks 2).** Is the target food-cost percentage a single
+   restaurant-wide number, or per menu category? A single number is simpler
+   and usually wrong — bar and food carry very different targets, and this
+   catalog has 131 alcohol products against 60 carnes, so the two are not a
+   rounding difference.
+2. **Q8 (blocks 3).** What format does the POS's per-dish export take
+   (Excel, CSV, an API), what columns does it carry, and where does the file
+   land? The answer decides whether §5.4 D is a `POST` endpoint or a file
+   watcher mirroring how upstream reads its own spreadsheets. Ask for one
+   real export file before designing anything.
+3. **Q9 (blocks 1.3, soft).** Do any of the 32 suppliers other than the two
+   known parent/subsidiary pairs (Mayca, Gas Tomza) sell the same insumo
+   under materially different descriptions? This does not block the build —
+   the mapping queue handles it either way — but it sets expectations for
+   how much the LLM grouping actually has to do.
 
 ---
 
@@ -854,9 +1010,27 @@ Answer before the step they belong to; none blocks Phase 0.
   size. Mitigation: a test fixture built from a real case-bought product,
   and the "¿Por qué este costo?" panel showing the factor and its origin on
   every screen where the cost appears.
+- **Passing `precio_unitario_crc` through raw.** Nearly caught us in this
+  document's own first draft: the column is `NULL` for every CRC purchase
+  *by design*, so a pass-through plus a "drop the nulls" rule discards 98%
+  of the catalog and leaves almost every insumo priceless. It fails as
+  *silence*, not as an error — the app would simply report that nothing can
+  be costed. Mitigation: the coalescing rule is written into §5.2 as a
+  contract term, and step 1.1 gets a test asserting that a CRC purchase
+  arrives with a non-null CRC price.
 - **Upstream schema drift.** The API is a contract, but contracts erode.
   Mitigation: `/api/v1/version`, a sync smoke test that fails loudly on a
   missing field, and the contract documented in both repos rather than one.
+- **Bad invoice lines costed as if they were prices.** Measured, not
+  hypothetical: 6% of the products with enough history carry at least one
+  line off by a factor of 3–10 (`PEREJIL` at ₡120.79 among ₡850–1 190).
+  The `median_window` default absorbs the common case, but an insumo with
+  three observations and one bad one is still exposed, and `last`/`max`
+  are exposed by construction. Mitigation: the "¿Por qué este costo?" panel
+  shows the whole series, so an outlier is visible at the point the number
+  is questioned. A real outlier *flag* on the series is a fast-follow worth
+  considering once the queue is drained — deliberately not built now,
+  because a rule that hides data needs evidence before it earns the right.
 - **LLM grouping over-merges.** *Pechuga con hueso* and *pechuga
   deshuesada* are different insumos with very different merma, and a model
   is happy to call them the same thing. Mitigation: non-negotiable #4, and
@@ -892,3 +1066,8 @@ Answer before the step they belong to; none blocks Phase 0.
 | D14 | This app never writes to `restaurant-manager`, and upstream never writes here | Each app owns its master data; a second writer makes both audit trails untrustworthy. Both directions are read-only by design (§5.4 C) | 2026-09-02 | Confirmed |
 | D15 | No Alembic in Phase 1 — `create_all` + documented manual `ALTER TABLE` | Matches upstream's reality *and* inherits its documented debt, knowingly. Wiring Alembic in both repos is a Phase 2 candidate | 2026-09-02 | Proposed |
 | D16 | The builder screen has no JSON endpoint; live totals are server-rendered htmx fragments | One costing engine. A JSON endpoint invites a second copy of the math in the browser, and the two diverge the first time a merma changes | 2026-09-02 | Confirmed |
+| D17 | Default costing method is `median_window` over 90 days, not the average | 6% of products with ≥3 purchases in a window carry a bad invoice line (PEREJIL at ₡120.79 among ₡850-1 190); a median ignores it and a mean absorbs it. Free where it is not needed: for the 54% of products with ≤2 purchases per window the median is arithmetically identical to every alternative. `weighted_avg_window` stays one setting away | 2026-09-02 | Confirmed (measured, then confirmed by the operator) |
+| D18 | Traversal depth capped at 5, not 8 | The kitchen nests three (fondo → salsa → plato); 5 leaves two levels of headroom while surfacing a runaway nest at the fourth hop rather than the eighth | 2026-09-02 | Confirmed |
+| D19 | The API coalesces the CRC price; it never passes `precio_unitario_crc` through raw | That column is NULL for every CRC purchase by design — 17 272 of 17 645 live rows. A pass-through plus "drop the nulls" would discard 98% of the catalog and fail as silence rather than as an error. A NULL `moneda` (310 rows) is treated as CRC, per Hacienda's own default | 2026-09-02 | Confirmed |
+| D20 | The mapping queue defaults to food categories bought within 180 days (~400 of 1 420 rows), sorted by purchase volume, with bulk confirm on day one | 1 420 rows is not a sitting, and a queue that cannot be drained gets abandoned. Non-food categories (Empaques, Menaje, Limpieza, Higiene, Oficina, Utilidades — 415 products) are never recipe ingredients | 2026-09-02 | Confirmed |
+| D21 | Phase 2 decomposes an all-in menu price with per-plato `lleva_servicio` and `iva_pct`, not a single divisor | Measured against the real sales file: IVA is computed on the subtotal (12.75-12.95%), not on subtotal+servicio (11.95%), and servicio runs 8.1-9.2% of subtotal rather than a flat 10% — so some share of sales carries no servicio at all | 2026-09-02 | Proposed |

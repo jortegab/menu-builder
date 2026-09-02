@@ -448,7 +448,7 @@ class AppSetting(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     metodo_costeo_default: Mapped[str] = mapped_column(
-        String(30), default="weighted_avg_window"
+        String(30), default="median_window"
     )
     ventana_dias_default: Mapped[int] = mapped_column(Integer, default=90)
     upstream_api_url: Mapped[str | None] = mapped_column(String(300))

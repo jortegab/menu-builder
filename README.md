@@ -105,6 +105,14 @@ El insumo carga las tres cosas que un producto no puede saber:
   conservador; el ponderado es el promedio honesto de lo que de verdad
   pagaste.
 
+  **Por defecto se usa la mediana**, y no es una preferencia: en el
+  catálogo real, 6 de cada 100 productos con historial suficiente traen
+  alguna línea de factura mala. El perejil, por ejemplo, se compra entre
+  ₡850 y ₡1 190 — y hay una línea de ₡120.79. La mediana no la ve; un
+  promedio se la come. Y donde no hace falta no cuesta nada: en el 54% de
+  los productos, que tienen dos compras o menos en la ventana, la mediana
+  da exactamente lo mismo que cualquier otro método.
+
 ### Preparación (insumo compuesto o subreceta)
 
 Algo que se hace en casa y que otras recetas usan como si fuera un insumo:
@@ -149,6 +157,18 @@ paquete de 5 kg → 5 000 g) y las unidades que faltan. Cuando la
 descripción no dice nada, cae a la unidad de la factura, y si tampoco,
 a la de la categoría — carnes, pollo y mariscos en kilos.
 
+En la práctica el peso lo lleva la descripción, no la factura: **el 85% del
+catálogo trae la unidad como «Unid» u «Otros»**, que no dice nada, y la
+unidad comercial viene vacía en el 96,7% de las líneas. Por eso el campo
+para escribir el factor a mano está a un clic: se va a usar.
+
+El catálogo tiene **1 420 productos**, y esa lista completa no se drena de
+una sentada. La cola llega filtrada: solo categorías de comida (fuera
+empaques, menaje, limpieza, higiene, oficina) y solo lo comprado en los
+últimos 180 días — unas 400 filas, ordenadas por volumen de compra, con el
+resto detrás de un filtro. Además no hace falta mapear todo: un insumo
+solo tiene que existir cuando una receta lo pide.
+
 **Nada de eso se activa solo.** La sugerencia entra como *sugerida* y
 espera. Un mapeo equivocado se vuelve invisible apenas está adentro de un
 costo, así que la confirmación es de una persona, siempre. Si no hay llave
@@ -188,11 +208,11 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
 **Todo lo de arriba.** Lo que sí está, hoy:
 
 - El diseño completo, con sus decisiones y el porqué de cada una —
-  `PLAN.md`, 15 decisiones numeradas y 8 reglas innegociables.
+  `PLAN.md`, 21 decisiones numeradas y 8 reglas innegociables.
 - El modelo de datos (10 tablas) y el esqueleto que levanta con
   `docker compose up`.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 51
+  el recorrido del grafo de recetas y la detección de ciclos — con 55
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
   una salsa que se contiene a sí misma, unidades incompatibles).
 
@@ -201,12 +221,21 @@ Y después de la fase 1 quedan dos más, ya pensadas pero sin diseñar:
 - **Fase 2 — precio de venta y margen.** Cuánto cobrás, cuánto te queda,
   qué porcentaje de food cost, y el precio sugerido a partir de un food
   cost objetivo. Más alertas cuando el costo de un plato se corre.
+
+  Un detalle que ya se revisó contra el archivo de ventas real y que no es
+  menor: el precio del menú **trae IVA y servicio adentro**, y no se pueden
+  sacar con un solo divisor. El IVA se calcula sobre el subtotal (da entre
+  12,75% y 12,95%), no sobre subtotal + servicio; y el servicio anda entre
+  8,1% y 9,2% del subtotal en vez de un 10% parejo, o sea que hay ventas
+  que no llevan servicio del todo. Así que cada plato va a necesitar decir
+  si lleva servicio y con qué IVA, en vez de aplicarle a todos la misma
+  fórmula.
 - **Fase 3 — ingeniería de menú.** Los cuadrantes de popularidad contra
-  rentabilidad. **Bloqueada**, y conviene decirlo claro: necesita las
-  ventas *por plato*, y eso hoy no existe en ninguno de los dos apps — el
-  `/ventas` de `restaurant-manager` lee totales diarios de un Excel, sin
-  desglose. La fase 3 arranca con una pregunta que no es de este app:
-  ¿puede el POS exportar ventas por plato?
+  rentabilidad, y la comparación entre lo que las recetas *dicen* que se
+  consumió y lo que el inventario dice que de verdad salió. El POS sí
+  exporta ventas por plato, así que ya no está bloqueada; falta definir en
+  qué formato viene el archivo y dónde cae. Ojo: esos datos entran acá
+  directo, no por `restaurant-manager`, que solo lee totales diarios.
 
 ---
 
