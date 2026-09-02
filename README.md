@@ -65,8 +65,15 @@ un mapeo, ni una corrección. Si un producto está mal categorizado, se
 arregla allá. La regla vale en los dos sentidos: cada app es dueña de sus
 propios datos y el otro solo lee.
 
-Esa API **todavía no existe** — construirla es el paso 1.0 de la fase 1, y
-se hace en el otro repo. Ver `PLAN.md` §5.
+Esa API **ya está construida** (`restaurant-manager` 0.75, 2 de setiembre
+de 2026): seis endpoints de solo lectura, con sus pruebas, verificados
+contra el catálogo real — 1 420 productos, 32 proveedores, 17 645 líneas de
+compra. Ver `PLAN.md` §5.
+
+Un detalle para tenerlo presente: el otro app corre desde una imagen, no
+desde los archivos del repo, así que **la API nueva no se sirve hasta que
+se reconstruya ese contenedor** (`docker compose up -d --build web` en
+`restaurant-manager`).
 
 ---
 

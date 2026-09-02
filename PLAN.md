@@ -875,7 +875,7 @@ is green.
 
 | step | work | done when |
 |---|---|---|
-| 1.0 | **`/api/v1` in `restaurant-manager`** — router, decision-log entry, PLAN/README/CLAUDE updates, smoke tests | endpoints return real rows from the live DB |
+| 1.0 | ~~**`/api/v1` in `restaurant-manager`**~~ — **done 2026-09-02** (upstream 0.75, `56653c8`): six GET endpoints, 27 tests, upstream D28/D29, verified against the live catalog | ✅ endpoints return real rows from the live DB |
 | 1.1 | `catalog_sync` + mirror tables + Ajustes sync panel | full catalog and price history mirrored; re-sync idempotent |
 | 1.2 | Insumo CRUD, unidad de uso, merma, método/ventana | an insumo can be created and configured by hand end to end |
 | 1.3 | Mapping queue + LLM suggestion + deterministic fallback | the real catalog is drainable into insumos in one sitting |

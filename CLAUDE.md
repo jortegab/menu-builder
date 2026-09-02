@@ -23,9 +23,24 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 0.** Design, skeleton, data model, and the pure costing engine with
-its tests. **No screens yet** beyond a stub `/recetas`. Phase 1 step 1.0 —
-the `/api/v1` router in `restaurant-manager` — has not been written.
+**Phase 1, step 1.1.** Design, skeleton, data model, and the pure costing
+engine with its tests. **No screens yet** beyond a stub `/recetas`.
+
+**Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
+`/api/v1` — six read-only GET endpoints over the catalog and price history,
+27 tests, verified against the live data. The contract lives in `PLAN.md`
+§5 *and* in that repo's own `routers/api.py` docstring; when they disagree,
+the router is the truth and this plan is the bug.
+
+Two things it confirmed that matter for the next step:
+
+- **`precio_efectivo_crc` is coalesced upstream**, so a CRC purchase
+  arrives with a real CRC price. `catalog_sync` must *not* re-derive it.
+- **Money arrives as a string** (`"1039.6040"`), never a JSON number. Parse
+  it with `Decimal(...)`, never `float(...)`.
+
+**Next: step 1.1** — `services/catalog_sync.py` plus the mirror tables that
+already exist in `models.py`.
 
 Do not describe unbuilt features as working, in the UI or in the docs.
 README's "qué va a hacer" section is explicitly labelled as unbuilt; keep
