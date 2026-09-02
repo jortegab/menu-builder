@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import init_db
-from .routers import ajustes, insumos, recetas
+from .routers import ajustes, insumos, mapeo, recetas
 from .templating import templates
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +38,10 @@ app.mount(
     name="static",
 )
 app.include_router(ajustes.router)
+# mapeo before insumos: `/insumos/mapeo` would otherwise be captured by
+# `/insumos/{insumo_id}` and 422 on the int conversion, since FastAPI
+# validates the matched route rather than falling through to the next one.
+app.include_router(mapeo.router)
 app.include_router(insumos.router)
 app.include_router(recetas.router)
 

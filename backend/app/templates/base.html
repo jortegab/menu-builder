@@ -13,7 +13,8 @@
     <a class="rail__link {% if seccion == 'preparaciones' %}is-on{% endif %}" href="/preparaciones">Preparaciones</a>
     <a class="rail__link {% if seccion == 'insumos' %}is-on{% endif %}" href="/insumos">Insumos</a>
     <a class="rail__link rail__link--sub {% if seccion == 'mapeo' %}is-on{% endif %}" href="/insumos/mapeo">
-      Mapeo{% if pendientes_mapeo %} <span class="pip pip--warn">{{ pendientes_mapeo }}</span>{% endif %}
+      {% set _pend = pendientes_mapeo(request) %}
+      Mapeo{% if _pend %} <span class="pip pip--warn">{{ _pend }}</span>{% endif %}
     </a>
     <a class="rail__link rail__foot {% if seccion == 'ajustes' %}is-on{% endif %}" href="/ajustes">Ajustes</a>
   </nav>

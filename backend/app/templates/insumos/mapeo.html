@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% set seccion = 'mapeo' %}
+{% block title %}Mapeo · Menu Builder{% endblock %}
+{% block heading %}Mapeo de productos{% endblock %}
+{% block content %}
+
+<div class="card">
+  <p class="muted">
+    Cada fila es un producto del catálogo que todavía no es ningún insumo.
+    Confirmá a cuál pertenece — o creá uno nuevo. <strong>Nada se activa
+    solo:</strong> hasta que alguien confirma, ese producto no le pone
+    precio a ninguna receta.
+  </p>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi__label">Mapeados</div><div class="kpi__value">{{ resumen.mapeados }}</div></div>
+    <div class="kpi"><div class="kpi__label">Sin mapear</div><div class="kpi__value">{{ resumen.pendientes }}</div></div>
+    <div class="kpi"><div class="kpi__label">En esta cola</div><div class="kpi__value">{{ resumen.en_cola }}</div></div>
+    <div class="kpi">
+      <div class="kpi__label">Sugerencias</div>
+      <div class="kpi__value kpi__value--sm">{{ 'Claude' if resumen.llm else 'Por parecido de texto' }}</div>
+    </div>
+  </div>
+  {% if not resumen.llm %}
+  <p class="muted small">
+    No hay llave de API configurada, así que las sugerencias salen de
+    comparar texto: más toscas, pero la cola funciona igual y no cuesta
+    nada. Se puede mapear todo a mano sin problema.
+  </p>
+  {% endif %}
+
+  <form class="toolbar__filters" method="get" action="/insumos/mapeo">
+    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Buscar producto…">
+    <label class="check"><input type="checkbox" name="comida" value="1" {% if comida == '1' %}checked{% endif %} onchange="this.form.submit()"> Solo comida</label>
+    <label class="check"><input type="checkbox" name="reciente" value="1" {% if reciente == '1' %}checked{% endif %} onchange="this.form.submit()"> Comprado en 180 días</label>
+    <button class="btn btn--ghost" type="submit">Filtrar</button>
+  </form>
+</div>
+
+{% for s in sugerencias %}
+<div class="card mapeo">
+  <div class="mapeo__head">
+    <div>
+      <strong>{{ s.producto.description }}</strong>
+      <div class="muted small">
+        {{ s.producto.supplier_nombre }}
+        {% if s.producto.categoria_slug %} · {{ s.producto.categoria_slug }}{% endif %}
+        · {{ s.compras }} compra(s)
+        {% if s.producto.unidad_medida %} · unidad en factura: {{ s.producto.unidad_medida }}{% endif %}
+      </div>
+    </div>
+    <div>
+      {% if s.origen == 'llm' %}<span class="pip">Sugerido por Claude</span>
+      {% elif s.origen == 'similitud' %}<span class="pip">Parecido {{ (s.confianza * 100) | round | int }}%</span>
+      {% else %}<span class="pip pip--warn">Sin sugerencia</span>{% endif %}
+    </div>
+  </div>
+
+  <form class="mapeo__form" method="post" action="/insumos/mapeo/confirmar">
+    <input type="hidden" name="catalog_product_id" value="{{ s.producto.id }}">
+    <input type="hidden" name="factor_origen" value="{{ s.factor_origen }}">
+
+    {% if s.insumo_id %}
+      <input type="hidden" name="insumo_id" value="{{ s.insumo_id }}">
+      <div class="field field--inline">
+        <label>Insumo</label>
+        <div class="mapeo__destino"><strong>{{ s.insumo_nombre }}</strong></div>
+      </div>
+    {% else %}
+      <div class="field field--inline">
+        <label for="n{{ s.producto.id }}">Insumo nuevo</label>
+        <input class="input" id="n{{ s.producto.id }}" name="nombre_nuevo" value="{{ s.nombre_propuesto or '' }}">
+      </div>
+      <div class="field field--inline">
+        <label for="u{{ s.producto.id }}">Unidad de uso</label>
+        <select class="input input--sm" id="u{{ s.producto.id }}" name="unidad_uso">
+          {% for u in unidades %}
+          <option value="{{ u }}" {% if u == s.unidad_sugerida %}selected{% endif %}>{{ UNIDAD_LABELS.get(u, u) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    <div class="field field--inline">
+      <label for="f{{ s.producto.id }}">Factor</label>
+      <input class="input input--sm" id="f{{ s.producto.id }}" name="factor"
+             value="{{ s.factor if s.factor is not none else '' }}" inputmode="decimal"
+             placeholder="cuántas unidades de uso trae">
+      <span class="muted small">
+        {% if s.factor_origen == 'descripcion' %}leído de la descripción
+        {% elif s.factor_origen == 'llm_descripcion' %}leído por Claude
+        {% elif s.factor_origen == 'unidad_medida' %}de la unidad de la factura
+        {% elif s.factor_origen == 'default_categoria' %}por categoría (kg)
+        {% else %}<span class="pip pip--warn">hay que ponerlo a mano</span>{% endif %}
+      </span>
+    </div>
+
+    <div class="actions">
+      <button class="btn" type="submit">Confirmar</button>
+      {% if s.insumo_id %}
+      <button class="btn btn--ghost" type="submit" formaction="/insumos/mapeo/rechazar"
+              name="insumo_id" value="{{ s.insumo_id }}">No es ese</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <p class="empty">No queda nada por mapear con estos filtros.</p>
+  <p class="empty__hint">
+    Probá quitando «solo comida» o «comprado en 180 días» para ver el resto
+    del catálogo. Tampoco hace falta mapearlo todo: un insumo solo tiene que
+    existir cuando una receta lo pide.
+  </p>
+</div>
+{% endfor %}
+
+{% if sugerencias %}
+<p class="muted small">
+  Se muestran hasta {{ por_pagina }} a la vez, los más comprados primero.
+  Confirmá los que veas y la cola se vuelve a llenar sola.
+</p>
+{% endif %}
+
+{% endblock %}

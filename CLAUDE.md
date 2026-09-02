@@ -23,9 +23,9 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.3.** Design, data model, the pure costing engine, the
-catalog mirror and insumo CRUD — all against real data. Screens so far:
-`/insumos` and `/ajustes`, plus a stub `/recetas`.
+**Phase 1, step 1.4.** Design, data model, the pure costing engine, the
+catalog mirror, insumo CRUD and the mapping queue — all against real data.
+Screens: `/insumos`, `/insumos/mapeo`, `/ajustes`, plus a stub `/recetas`.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
 `/api/v1` — six read-only GET endpoints over the catalog and price history,
@@ -85,8 +85,33 @@ Three rules worth knowing before touching that module:
 Archiving never deletes: an insumo can be referenced by a `receta_linea`,
 and deleting one would orphan a recipe or silently change a plate cost.
 
-**Next: step 1.3** — the mapping queue (`/insumos/mapeo`), LLM suggestion
-with a deterministic fallback.
+**Step 1.3 is done too** (2026-09-02): the mapping queue at
+`/insumos/mapeo`, with a nav badge that is the only thing in the app that
+nags. Suggestions come from Claude when a key is configured and from
+`insumo_match` when not; the queue works either way and says which.
+
+Four things load-bearing enough to re-read before touching it:
+
+- **`insumo_match` is not really a fallback.** 85% of the catalog has no
+  usable `unidad_medida`, so the pack size is in the description text or
+  nowhere. Its deterministic reading resolves a conversion factor for
+  **76% of the live catalog** before any LLM runs.
+- **The over-merge guard is conflict pairs, not significant words.**
+  `PECHUGA CON HUESO` scored 0.47 against `Pechuga deshuesada` and was
+  offered; those differ by ~30 points of merma. The weaker rule (penalise
+  any qualifier one side lacks) also throws away `PECHUGA DE POLLO
+  DESGUESADA`, a real typo that is the same ingredient. Conflicts fire
+  only when both sides say opposite things.
+- **The slash form and the x form are not the same.** `1/5KG` is one pack
+  OF 5 kg; `24x350ML` is 24 TIMES 350 ml. Getting them backwards is a
+  factor-of-N error on every case-bought insumo.
+- **`confirmar` is only ever reached from a person**, and always writes
+  `status=confirmed`, `mapped_by=human`. The suggestion path never calls
+  it (non-negotiable #4).
+
+**Next: step 1.4** — the costing engine wired to real data, plus "¿Por qué
+este costo?".
+
 
 Do not describe unbuilt features as working, in the UI or in the docs.
 README's "qué va a hacer" section is explicitly labelled as unbuilt; keep
@@ -133,6 +158,10 @@ backend/app/
     units.py        unit conversion. Pure, no imports beyond Decimal
     costing.py      price series -> one price, then merma. Pure
     catalog_client.py  httpx client for upstream /api/v1. Network only
+    insumo_match.py insumo matching, pure: pack-size parsing, similarity,
+                    the conflict guard. Resolves 76% of factors alone
+    llm_insumo.py   Claude suggestion. Accelerator, never a dependency
+    mapeo.py        the mapping queue: pendientes, sugerir, confirmar
     insumos.py      insumo master data + validation. ValidationError
                     carries field-keyed Spanish messages
     catalog_sync.py    fills the mirror. Idempotent; never raises for
@@ -144,6 +173,8 @@ backend/app/
                     the request -- deliberate for a local single-operator
                     app (~2s incremental), not an oversight
     insumos.py      /insumos: list, create, edit, archive
+    mapeo.py        /insumos/mapeo. Registered BEFORE insumos.py or
+                    /insumos/{insumo_id} captures it and 422s
     recetas.py      Phase 0 stub
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
 PLAN.md             the design. 29 decisions, 8 non-negotiables
@@ -276,7 +307,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 102 tests today, mostly against the
+`unittest`, no pytest, matching upstream. 157 tests today, mostly against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the

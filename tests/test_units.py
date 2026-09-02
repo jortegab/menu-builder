@@ -61,9 +61,19 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(dimension_of("unidad"), "conteo")
 
     def test_compatible_units_never_crosses_dimensions(self):
-        self.assertEqual(set(compatible_units("g")), {"mg", "g", "kg"})
-        self.assertEqual(set(compatible_units("l")), {"ml", "l"})
+        # Imperial mass and the gallon are here because the real catalog
+        # uses them ("ALCAPARRAS 1/16OZ", 52 products with UnidadMedida
+        # "Gal"). The assertion is exact rather than a subset check: this is
+        # the list the recipe builder's unit selector offers, and a unit
+        # silently appearing or disappearing from it is worth failing on.
+        self.assertEqual(set(compatible_units("g")), {"mg", "g", "kg", "oz", "lb"})
+        self.assertEqual(set(compatible_units("l")), {"ml", "l", "gal"})
         self.assertEqual(compatible_units("unidad"), ["unidad"])
+
+    def test_imperial_and_gallon_convert_correctly(self):
+        self.assertEqual(convert(Decimal(1), "lb", "g"), Decimal("453.59237"))
+        self.assertEqual(convert(Decimal(16), "oz", "g"), Decimal("453.592370000"))
+        self.assertEqual(convert(Decimal(1), "gal", "l"), Decimal("3.785411784"))
 
     def test_to_canonical(self):
         self.assertEqual(to_canonical(Decimal(2), "kg"), (Decimal(2000), "g"))

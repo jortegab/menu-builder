@@ -32,8 +32,16 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     "mg": (MASA, Decimal("0.001")),
     "g": (MASA, Decimal(1)),
     "kg": (MASA, Decimal(1000)),
+    # Imperial mass shows up on imported goods ("ALCAPARRAS 1/16OZ").
+    "oz": (MASA, Decimal("28.349523125")),
+    "lb": (MASA, Decimal("453.59237")),
     "ml": (VOLUMEN, Decimal(1)),
     "l": (VOLUMEN, Decimal(1000)),
+    # US liquid gallon. Present because the real catalog uses it -- 52
+    # products carry `Gal` as their XML UnidadMedida, mostly cleaning
+    # supplies but also cooking oil, which is an insumo. Exactly the kind
+    # of addition PLAN.md §15 calls a cheap door: this table is a table.
+    "gal": (VOLUMEN, Decimal("3785.411784")),
     "unidad": (CONTEO, Decimal(1)),
 }
 
@@ -88,6 +96,16 @@ def normalize_unit(unit: str) -> str:
         "und": "unidad",
         "uds": "unidad",
         "u": "unidad",
+        "onza": "oz",
+        "onzas": "oz",
+        "ozs": "oz",
+        "libra": "lb",
+        "libras": "lb",
+        "lbs": "lb",
+        "gl": "gal",
+        "gln": "gal",
+        "galon": "gal",
+        "galones": "gal",
         "unidades": "unidad",
     }
     u = aliases.get(u, u)

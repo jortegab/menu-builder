@@ -88,3 +88,26 @@ templates.env.globals["static_url"] = static_url
 templates.env.globals["METODO_LABELS"] = METODO_LABELS
 templates.env.globals["METODO_AYUDA"] = METODO_AYUDA
 templates.env.globals["UNIDAD_LABELS"] = UNIDAD_LABELS
+
+
+def pendientes_mapeo(request) -> int:
+    """The mapping queue's badge count, read from the Session `get_db`
+    published on `request.state.db` -- template code never opens its own.
+
+    Degrades to 0 rather than raising: the nav renders on every page,
+    including error pages and any route that never touched the database,
+    and a rail that can 500 is a rail that takes the whole app down with
+    it.
+    """
+    db = getattr(getattr(request, "state", None), "db", None)
+    if db is None:
+        return 0
+    try:
+        from .services.mapeo import contar_pendientes
+
+        return contar_pendientes(db)
+    except Exception:  # pragma: no cover - the rail must never break a page
+        return 0
+
+
+templates.env.globals["pendientes_mapeo"] = pendientes_mapeo
