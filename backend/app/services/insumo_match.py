@@ -132,27 +132,44 @@ def tokens_significativos(texto: str) -> list[str]:
 def parse_presentacion(descripcion: str) -> tuple[Decimal, str] | None:
     """The pack size a description declares, as (cantidad, unidad), or None.
 
-    Three real shapes, tried in order of how specific they are:
+    **Always the total content**, in every shape. The factor a fuente
+    carries is how many `unidad_uso` one purchase unit yields, and the
+    purchase unit is whatever the invoice priced -- so a case of 24 bottles
+    is 24 bottles' worth, not one bottle's.
 
-    - `1/5kg`  -> (5, "kg")     one package **of** 5 kg. The number before
-      the slash is how many packages the line is quoting, not part of the
-      size, so it is discarded -- the price is per package either way.
-    - `24x350ML` -> (8400, "ml") twenty-four **times** 350 ml. Here the
-      count *is* part of the size: one case holds all of it.
-    - `2.5 KG`  -> (2.5, "kg")   a bare quantity.
+    Three real shapes:
 
-    That the slash form multiplies nothing and the `x` form multiplies is
-    the whole subtlety, and getting it backwards is a factor-of-N costing
-    error on every case-bought insumo.
+    - `4/2.5 KG`  -> (10, "kg")    four packages **of** 2.5 kg.
+    - `24x350ML`  -> (8400, "ml")  twenty-four **times** 350 ml.
+    - `2.5 KG`    -> (2.5, "kg")   a bare quantity.
+
+    Both compound forms multiply, and the live catalog settles it rather
+    than convention: `MARGARINA BLOQUES CORONA 6/2.08KG (12,5KG)` states
+    its own total in the parenthetical, and 6 x 2.08 = 12.48 ~= 12,5. An
+    earlier version of this function discarded the count on the slash form,
+    which would have costed that margarine at 2.08 kg -- a 6x error, and
+    invisible.
+
+    The rule was untestable against this catalog until it was looked at
+    properly: **352 of the ~420 slash forms are `1/...`**, where multiplying
+    and discarding agree. The other ~65 (`4/2.5 KG`, `24/600 ML`,
+    `6/12 UDS`) are where it mattered, and they were all being read wrong.
+
+    A unit must follow immediately, which is what keeps the ratios and
+    fractions that pepper real descriptions from being read as pack sizes:
+    `CARNE MOLIDA RES 81/19` (a lean/fat ratio) and `BRIOCHE 4 5/8"` (an
+    inch fraction) both have no unit after the second number, so neither
+    matches -- and the bare-quantity rule then correctly finds the `4.5KG`
+    further along the first one.
     """
     texto = descripcion or ""
 
     m = _RE_FRACCION.search(texto)
     if m:
-        size = _num(m.group(2))
-        if size is not None and size > 0:
+        count, size = _num(m.group(1)), _num(m.group(2))
+        if count and size and count > 0 and size > 0:
             try:
-                return size, normalize_unit(m.group(3))
+                return count * size, normalize_unit(m.group(3))
             except UnknownUnit:
                 pass
 

@@ -19,19 +19,46 @@ from app.services import insumo_match as m  # noqa: E402
 
 
 class TestParsePresentacion(unittest.TestCase):
-    def test_slash_form_takes_the_size_not_the_count(self):
-        # "1/5kg" is one package OF 5 kg. The leading number is how many
-        # packages the line quotes, and the price is per package either way.
+    def test_slash_form_with_one_package(self):
+        # 352 of the ~420 slash forms in the live catalog are `1/...`, where
+        # multiplying and discarding the count agree -- which is exactly why
+        # the rule went untested for so long.
         self.assertEqual(m.parse_presentacion("TOCINETA AHUMADA MFS 1/1KG"), (Decimal(1), "kg"))
         self.assertEqual(m.parse_presentacion("QUESO PARMESANO 1/500 GRS"), (Decimal(500), "g"))
         self.assertEqual(m.parse_presentacion("ACEITE OLEINA MFS 1/17 L"), (Decimal(17), "l"))
 
+    def test_slash_form_multiplies_to_the_total(self):
+        # The ~65 rows where it mattered, and where an earlier version was
+        # wrong by the case size.
+        self.assertEqual(m.parse_presentacion("HARINA NACARINA 4/2.5 KG"), (Decimal("10.0"), "kg"))
+        self.assertEqual(m.parse_presentacion("AGUA SAN ANGEL TP 24/600 ML"), (Decimal(14400), "ml"))
+        self.assertEqual(
+            m.parse_presentacion('TORTILLA TRIGO MISSION CONG 10.5" 6/12 UDS.'),
+            (Decimal(72), "unidad"),
+        )
+
+    def test_the_description_that_states_its_own_total(self):
+        # `MARGARINA BLOQUES CORONA 6/2.08KG (12,5KG)` is the proof that the
+        # slash form multiplies: 6 x 2.08 = 12.48, and the parenthetical
+        # says 12,5. Discarding the count would cost it at 2.08 kg.
+        cantidad, unidad = m.parse_presentacion("MARGARINA BLOQUES CORONA 6/2.08KG (12,5KG)")
+        self.assertEqual(unidad, "kg")
+        self.assertAlmostEqual(float(cantidad), 12.5, delta=0.1)
+
     def test_x_form_multiplies(self):
-        # A case holds all of it, so here the count IS part of the size.
-        # Getting this backwards vs. the slash form is a factor-of-N error
-        # on every case-bought insumo.
         self.assertEqual(m.parse_presentacion("CJ 24x350ML"), (Decimal(8400), "ml"))
         self.assertEqual(m.parse_presentacion("GASEOSA 12 X 500 ML"), (Decimal(6000), "ml"))
+
+    def test_ratios_and_inch_fractions_are_not_pack_sizes(self):
+        # Both real. `81/19` is a lean/fat ratio and `4 5/8"` an inch
+        # fraction; neither has a unit after the second number, so neither
+        # matches -- and the bare-quantity rule then correctly finds the
+        # 4.5KG further along the first one.
+        self.assertEqual(
+            m.parse_presentacion("CARNE MOLIDA RES 81/19 TUBO 4.5KG APROX(PXKG)"),
+            (Decimal("4.5"), "kg"),
+        )
+        self.assertIsNone(m.parse_presentacion('PAN HAMBURGUESA BRIOCHE 4 5/8"'))
 
     def test_bare_quantity(self):
         self.assertEqual(m.parse_presentacion("BROCOLI (600 GR C/U)W"), (Decimal(600), "g"))
