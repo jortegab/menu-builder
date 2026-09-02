@@ -48,14 +48,20 @@
           {% set n = fuentes.get(i.id, 0) %}
           {% if n %}{{ n }}{% else %}<span class="pip pip--warn">sin fuentes</span>{% endif %}
         </td>
-        <td class="num muted">—</td>
+        <td class="num">
+          {% set c = costos.get(i.id) %}
+          {% if c and c.valor is not none %}
+            {{ c.valor | money }}<span class="muted small">/{{ i.unidad_uso }}</span>
+            {% if c.precio_viejo %}<span class="pip pip--warn" title="El precio más nuevo tiene {{ c.antiguedad_dias }} días">viejo</span>{% endif %}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   <p class="muted small">
-    La columna de costo queda en blanco hasta que cada insumo tenga
-    productos asociados — eso llega con el mapeo.
+    Un costo en blanco es un insumo sin fuentes con precio: no puede costear
+    ninguna receta todavía. Se arregla en el mapeo.
   </p>
   {% else %}
     <p class="empty">

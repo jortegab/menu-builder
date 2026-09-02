@@ -23,8 +23,9 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.4.** Design, data model, the pure costing engine, the
-catalog mirror, insumo CRUD and the mapping queue — all against real data.
+**Phase 1, step 1.5.** The catalog mirror, insumo CRUD, the mapping queue
+and the costing engine — pure *and* wired to real data. Insumos cost real
+numbers now; recipes do not exist yet.
 Screens: `/insumos`, `/insumos/mapeo`, `/ajustes`, plus a stub `/recetas`.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
@@ -109,7 +110,34 @@ Four things load-bearing enough to re-read before touching it:
   `status=confirmed`, `mapped_by=human`. The suggestion path never calls
   it (non-negotiable #4).
 
-**Next: step 1.4** — the costing engine wired to real data, plus "¿Por qué
+**Step 1.4 is done too** (2026-09-02): `services/insumo_costs.py` turns
+confirmed sources into a cost, and `/insumos/{id}` shows the work.
+
+`costing.py` owns the arithmetic and stays pure; this module owns the
+*gathering*, which is where the judgement calls are. Three exclusions, and
+all three are **reported on screen, never silently applied** -- an insumo
+that costs less than it should because half its sources were skipped is
+exactly what the panel exists to reveal:
+
+- Only `confirmed` **and** `activo` sources contribute. A suggestion is not
+  evidence; a deactivated source is a supplier you stopped buying from, and
+  keeping their old prices would quietly hold the cost down.
+- A source with no `factor_conversion` contributes nothing. **Never treated
+  as 1** -- that costs the insumo per package instead of per gram, which
+  reads as a plausible number.
+- An observation with no CRC price is dropped and counted.
+
+Observations outside the window are **shown and marked, not hidden**: "why
+is this using only two purchases?" is the question the table has to answer.
+
+Verified against live data end to end: the app rendered ₡4.36/g for an
+insumo fed by four suppliers, and the hand-written SQL median over the same
+23 in-window observations returned 4.3632.
+
+**Next: step 1.5** — `receta`/`receta_linea`, preparaciones, and the cycle
+guard on write. `graph.py` already has the traversal and cycle detection,
+unused so far.
+
 este costo?".
 
 
@@ -158,6 +186,8 @@ backend/app/
     units.py        unit conversion. Pure, no imports beyond Decimal
     costing.py      price series -> one price, then merma. Pure
     catalog_client.py  httpx client for upstream /api/v1. Network only
+    insumo_costs.py sources -> price series -> cost, plus the Explicacion
+                    the "¿Por qué este costo?" panel renders
     insumo_match.py insumo matching, pure: pack-size parsing, similarity,
                     the conflict guard. Resolves 76% of factors alone
     llm_insumo.py   Claude suggestion. Accelerator, never a dependency
@@ -307,7 +337,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 157 tests today, mostly against the
+`unittest`, no pytest, matching upstream. 175 tests today, mostly against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the

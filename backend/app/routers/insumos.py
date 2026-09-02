@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..models import Insumo
-from ..services import insumos as svc
+from ..services import insumo_costs, insumos as svc
 from ..templating import templates
 
 router = APIRouter()
@@ -47,6 +47,7 @@ def list_insumos(
         {
             "insumos": rows,
             "fuentes": svc.fuente_counts(db, [i.id for i in rows]),
+            "costos": insumo_costs.costos(db, rows),
             "q": q,
             "estado": estado,
             **_defaults(),
@@ -116,6 +117,7 @@ def detalle(insumo_id: int, request: Request, db: Session = Depends(get_db)):
             "insumo": insumo,
             "fuentes": svc.fuente_counts(db, [insumo.id]).get(insumo.id, 0),
             "usos": svc.usage_count(db, insumo),
+            "exp": insumo_costs.explicar(db, insumo),
             **_defaults(),
         },
     )

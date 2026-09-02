@@ -58,6 +58,93 @@
 </div>
 
 <div class="card">
+  <h2 class="card__title">Costo</h2>
+  {% if exp.costo.valor is not none %}
+    <div class="costo">
+      <div class="costo__cifra">{{ exp.costo.valor | money }}</div>
+      <div class="costo__unidad">por {{ insumo.unidad_uso }} usable</div>
+    </div>
+    <p class="muted small">
+      {{ METODO_LABELS.get(exp.metodo) }} sobre {{ exp.costo.observaciones_usadas }}
+      compra(s){% if exp.metodo != 'last' %} de los últimos {{ exp.ventana_dias }} días{% endif %}{% if exp.merma_pct %}, con {{ exp.merma_pct | pct }} de merma aplicada{% endif %}.
+    </p>
+    {% if exp.costo.precio_viejo %}
+    <p class="aviso aviso--warn">
+      No hay compras dentro de la ventana. Se está usando la más reciente que
+      hay, de hace {{ exp.costo.antiguedad_dias }} días — puede que este
+      insumo ya no se compre.
+    </p>
+    {% endif %}
+  {% else %}
+    <p class="empty">Este insumo todavía no tiene costo.</p>
+    <p class="empty__hint">
+      {% if not exp.fuentes %}No tiene ningún producto asociado.
+      {% elif exp.fuentes_sin_factor %}Sus fuentes no tienen factor de conversión, así que no se puede saber cuánto vale una unidad de uso.
+      {% else %}Sus fuentes no tienen compras con precio en colones.{% endif %}
+      Mientras siga así, cualquier receta que lo use va a quedar
+      <strong>incompleta</strong> — y eso es a propósito: un cero haría que
+      el ingrediente del que menos sabemos parezca el más barato.
+    </p>
+  {% endif %}
+
+  {% if exp.hay_advertencias %}
+  <ul class="muted small">
+    {% if exp.fuentes_sin_factor %}<li>{{ exp.fuentes_sin_factor }} fuente(s) sin factor de conversión, excluidas del cálculo.</li>{% endif %}
+    {% if exp.descartadas_sin_tipo_cambio %}<li>{{ exp.descartadas_sin_tipo_cambio }} compra(s) en dólares sin tipo de cambio del día, descartadas.</li>{% endif %}
+  </ul>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 class="card__title">¿Por qué este costo?</h2>
+  <p class="muted small">
+    Cada número de arriba sale de acá. Si algo no cuadra, la fila que lo
+    causa está en esta tabla.
+  </p>
+
+  <h3 class="sub">Fuentes</h3>
+  {% if exp.fuentes %}
+  <table class="grid">
+    <thead><tr><th>Producto</th><th>Proveedor</th><th class="num">Factor</th><th>Origen</th><th class="num">Compras</th><th>Estado</th></tr></thead>
+    <tbody>
+      {% for f in exp.fuentes %}
+      <tr>
+        <td>{{ f.producto.description }}</td>
+        <td class="muted small">{{ f.producto.supplier_nombre[:26] }}</td>
+        <td class="num">{% if f.fuente.factor_conversion %}{{ f.fuente.factor_conversion | cantidad }} {{ insumo.unidad_uso }}{% else %}—{% endif %}</td>
+        <td class="muted small">{{ f.fuente.factor_origen }}</td>
+        <td class="num">{{ f.observaciones }}</td>
+        <td>{% if f.usable %}<span class="pip pip--ok">en uso</span>{% else %}<span class="pip pip--warn">{{ f.motivo }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">Ninguna.</p>{% endif %}
+
+  {% if exp.observaciones %}
+  <h3 class="sub">Compras ({{ exp.observaciones | length }})</h3>
+  <table class="grid">
+    <thead><tr><th>Fecha</th><th>Proveedor</th><th class="num">Precio normalizado</th><th class="num">÷ factor</th><th class="num">Por {{ insumo.unidad_uso }}</th><th></th></tr></thead>
+    <tbody>
+      {% for o in exp.observaciones[:40] %}
+      <tr>
+        <td>{{ o.fecha.strftime('%d/%m/%Y') }}</td>
+        <td class="muted small">{{ o.proveedor[:26] }}</td>
+        <td class="num">{{ o.precio_normalizado | money }}</td>
+        <td class="num muted">{{ o.factor | cantidad }}</td>
+        <td class="num">{{ o.precio_por_unidad_uso | money }}</td>
+        <td>{% if not o.en_ventana %}<span class="muted small">fuera de la ventana</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if exp.observaciones | length > 40 %}
+  <p class="muted small">Se muestran las 40 más recientes de {{ exp.observaciones | length }}.</p>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
   <h2 class="card__title">Fuentes</h2>
   {% if fuentes %}
     <p>{{ fuentes }} producto(s) del catálogo alimentan este insumo.</p>

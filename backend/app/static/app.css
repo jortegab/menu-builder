@@ -148,3 +148,11 @@ textarea.input { width: 100%; resize: vertical; }
 .field--inline label { font-size: 12px; color: var(--ink-soft); }
 .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .check input { margin: 0; }
+
+/* --- cost figure + explanation --------------------------------------- */
+.costo { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 4px; }
+.costo__cifra { font-size: 30px; color: var(--teal); }
+.costo__unidad { color: var(--ink-soft); }
+.sub { margin: 18px 0 0; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.aviso { padding: 9px 12px; border-radius: 8px; margin: 10px 0 0; font-size: 13px; }
+.aviso--warn { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); }

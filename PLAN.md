@@ -879,7 +879,7 @@ is green.
 | 1.1 | ~~`catalog_sync` + mirror tables + Ajustes sync panel~~ — **done 2026-09-02**: 1 420 productos and 17 645 compras mirrored from the live API in 46 s; incremental re-sync 2 s | ✅ full catalog and price history mirrored; re-sync idempotent |
 | 1.2 | ~~Insumo CRUD, unidad de uso, merma, método/ventana~~ — **done 2026-09-02** | ✅ an insumo can be created and configured by hand end to end |
 | 1.3 | ~~Mapping queue + LLM suggestion + deterministic fallback~~ — **done 2026-09-02** | ✅ the real catalog is drainable into insumos in one sitting |
-| 1.4 | Costing engine wired to real data + "¿Por qué este costo?" | an insumo's cost matches a hand-computed figure from the same invoices |
+| 1.4 | ~~Costing engine wired to real data + "¿Por qué este costo?"~~ — **done 2026-09-02** | ✅ verified: app said ₡4.36/g, hand-computed SQL median said 4.3632 |
 | 1.5 | `receta` / `receta_linea`, preparaciones, cycle guard | a salsa can be built and reused by two platos |
 | 1.6 | The builder screen: drag-drop, live totals, incompleteness | a plate is costed from scratch in under two minutes |
 | 1.7 | `receta_costo_historico` + the cost-over-time card | a chart with real daily points |
