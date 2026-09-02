@@ -1,0 +1,52 @@
+# Pinned explicitly, for the same reason it is pinned in restaurant-manager
+# and documented there at length: without this key Compose derives the
+# project name from the *directory* name, and the project name prefixes the
+# volumes. Renaming the checkout would make Compose look for a volume that
+# does not exist, create it empty, and bring the app up against a blank
+# database -- with the real one still on disk but orphaned and invisible to
+# `docker compose`. It reads exactly like total data loss. Pinning here
+# means the directory can be renamed freely; only an edit to this line ever
+# moves the project.
+name: menu-builder
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: menu
+      POSTGRES_PASSWORD: menu
+      POSTGRES_DB: menu
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U menu"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # 5434, not 5433 -- restaurant-manager's own db holds that one. Exposed
+    # only so you can point psql or a notebook at it from this machine.
+    ports:
+      - "127.0.0.1:5434:5432"
+
+  web:
+    build: ./backend
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # restaurant-manager runs in its *own* Compose project on this same
+    # machine, so it is not on this network -- it is reachable only via the
+    # host port it publishes (127.0.0.1:8000). This mapping is what makes
+    # UPSTREAM_API_URL=http://host.docker.internal:8000/api/v1 resolve from
+    # inside this container on Linux; Docker Desktop provides it natively.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data
+    # 8001, not 8000 -- restaurant-manager holds that one. Bound to
+    # localhost. There is no auth: do NOT port-forward this to the internet.
+    ports:
+      - "127.0.0.1:8001:8000"
+
+volumes:
+  pgdata:

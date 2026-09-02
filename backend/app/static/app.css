@@ -1,0 +1,77 @@
+/* Palette ported from restaurant-manager's app.css so the two apps read as
+   one system. Two alert palettes, and which one you want depends on what
+   the thing is: amber is a QUEUE (something waits for the operator and
+   clears when they act -- the mapping queue, an incompleto receta); red is
+   a NUMBER THAT IS BAD (a cost that jumped). `--trend-up` is red because up
+   is the bad way for a cost to move. Do not introduce new hex values
+   inline. */
+:root {
+  --paper: #f4f6f5;
+  --surface: #ffffff;
+  --ink: #1c2426;
+  --ink-soft: #5d6b6e;
+  --line: #e2e8e7;
+  --teal: #0f766e;
+  --teal-soft: #e6f2f1;
+  --amber: #b45309;
+  --amber-soft: #fdf3e3;
+  --alert: #b42318;
+  --alert-soft: #fdeceb;
+  --trend-up: var(--alert);
+  --trend-down: var(--teal);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px;
+  padding: 20px 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+.rail__brand { font-weight: 600; padding: 0 12px 20px; }
+.rail__link {
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.rail__link:hover { background: var(--paper); }
+.rail__link--sub { margin-left: 12px; font-size: 13px; }
+.rail__foot { margin-top: auto; }
+.rail__link.is-on { color: var(--teal); background: var(--teal-soft); }
+.rail__link.is-on:hover { color: var(--teal); background: var(--teal-soft); }
+
+.stage { flex: 1; padding: 28px 32px; }
+.stage__head h1 { margin: 0 0 20px; font-size: 22px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.pip {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.pip--warn { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); }
+.pip--alert { color: var(--alert); background: var(--alert-soft); border: 1px solid var(--alert); }
+
+.empty { color: var(--ink-soft); margin: 0; }
+.empty__hint { color: var(--ink-soft); font-size: 13px; margin: 8px 0 0; }

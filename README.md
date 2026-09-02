@@ -1,0 +1,235 @@
+# Menu Builder
+
+Constructor de recetas y costeo de menú para un restaurante de un solo
+local en Costa Rica. Corre en la máquina del negocio, no en la nube.
+
+Contesta una sola pregunta, y la contesta bien: **¿cuánto me cuesta este
+plato, hoy?** Y la que viene después: *¿qué le pasa cuando sube el pollo?*
+
+Los precios no se digitan. Salen de las facturas electrónicas que
+**`restaurant-manager`** ya recibe del Gmail del restaurante — el mismo
+historial de compras real, con descuentos, sin IVA, convertido a colones
+cuando la factura vino en dólares. Este app no vuelve a calcular nada de
+eso: lo lee.
+
+> **Estado: fase 0.** Está el diseño completo (`PLAN.md`), el esqueleto del
+> repo, el modelo de datos y el motor de costeo con sus pruebas. **Todavía
+> no hay pantallas.** Nada de lo que se describe abajo como «qué va a
+> hacer» está construido — se lista para que se entienda hacia dónde va,
+> no para dar a entender que ya corre. Ver «Qué falta».
+
+---
+
+## Arrancar
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Abrí <http://localhost:8001>.
+
+El puerto es **8001**, no 8000: `restaurant-manager` ocupa ese. Lo mismo
+con la base, que queda en **5434** en vez de 5433. Los dos apps corren al
+mismo tiempo en la misma máquina, cada uno con su base y su volumen.
+
+La base vive en el volumen `menu-builder_pgdata`. El nombre del proyecto
+está fijado en `docker-compose.yml` (`name: menu-builder`) a propósito:
+sin esa línea Compose lo deriva del nombre de la carpeta, y renombrar el
+repo dejaría la base huérfana — se lee igualito a una pérdida total de
+datos. Para empezar de cero a propósito: `docker compose down -v`.
+
+Las pruebas:
+
+```bash
+PYTHONPATH=backend python -m unittest discover -s tests -v
+```
+
+---
+
+## Cómo se conecta con `restaurant-manager`
+
+Los dos apps se hablan por una sola puerta: una **API de solo lectura**
+(`/api/v1`) que `restaurant-manager` expone y que este app consume.
+
+```
+  facturas electrónicas (Gmail)
+             |
+             v
+    restaurant-manager  ──── GET /api/v1/productos ────►  menu-builder
+    (catálogo, precios)      GET /api/v1/.../compras      (insumos, recetas)
+```
+
+**Este app nunca le escribe a `restaurant-manager`.** Ni una categoría, ni
+un mapeo, ni una corrección. Si un producto está mal categorizado, se
+arregla allá. La regla vale en los dos sentidos: cada app es dueña de sus
+propios datos y el otro solo lee.
+
+Esa API **todavía no existe** — construirla es el paso 1.0 de la fase 1, y
+se hace en el otro repo. Ver `PLAN.md` §5.
+
+---
+
+## Las cuatro cosas que hay que entender
+
+Todo el app es la relación entre estas cuatro.
+
+### Producto
+
+Lo que un proveedor específico te vende, con el nombre que él le puso y al
+precio que él te cobra. Viene de `restaurant-manager` y acá no se edita
+nunca.
+
+Dos proveedores del mismo pollo son **dos productos**, y eso está bien:
+son dos precios, de dos proveedores, y juntarlos destruiría el historial
+que hace que funcionen las alertas de precio del otro app.
+
+### Insumo
+
+Lo que la cocina usa. *Pechuga deshuesada* es **un** insumo, aunque hoy
+venga de Aviocal Altavista como «filete de pechuga deshuesada» y de
+Inversiones Hevar como «pechuga deshuesada». Un insumo agrupa varios
+productos.
+
+El insumo carga las tres cosas que un producto no puede saber:
+
+- **Unidad de uso** — en qué mide la cocina. Se compra en paquetes de 5 kg
+  y se usa en gramos: la unidad de uso es el gramo, y el precio del paquete
+  se divide entre 5 000.
+- **% de merma** — cuánto se pierde al preparar. Comprás pechuga a ₡4 000
+  el kilo con 12% de merma y el kilo *usable* te cuesta ₡4 545. El costo se
+  reparte entre lo que sobrevive, no entre lo que entró.
+- **Método de costeo** — cuál precio creer. Último, promedio, promedio
+  ponderado por cantidad, mediana, máximo o mínimo, sobre una ventana de
+  días que vos elegís (90 por defecto). El máximo sirve para costear
+  conservador; el ponderado es el promedio honesto de lo que de verdad
+  pagaste.
+
+### Preparación (insumo compuesto o subreceta)
+
+Algo que se hace en casa y que otras recetas usan como si fuera un insumo:
+una salsa, una marinada, un fondo, una masa.
+
+Tiene su propia receta **y un rendimiento**: metés 3 000 g de tomate y te
+salen 2 500 g de salsa. Ese par es lo que permite cobrarla por gramo. Los
+500 g que se evaporaron quedan pagados por los que sobrevivieron.
+
+Una salsa que usan seis platos se edita **una vez** y los seis se
+recostean.
+
+### Receta (plato)
+
+El ítem del menú. Igual que una preparación, pero en vez de rendimiento
+declara porciones.
+
+---
+
+## Qué va a hacer (fase 1, todavía sin construir)
+
+### Insumos
+
+La lista canónica: unidad de uso, merma, método, costo actual, cuántos
+productos lo alimentan y cuándo se compró por última vez.
+
+Cada insumo tiene su **«¿Por qué este costo?»**: el método y la ventana que
+se aplicaron, la serie completa de compras con fecha, proveedor y factura,
+cuántas observaciones se descartaron y por qué, el factor de conversión y
+de dónde salió, y la merma. Ningún número aparece sin poder explicarse.
+
+### Mapeo
+
+La cola de trabajo. Los productos del catálogo que todavía no son ningún
+insumo, agrupados por sugerencia, para confirmar de a montones: *«estas
+cuatro filas son todas pechuga deshuesada»*, un clic.
+
+Las sugerencias las hace un LLM — el mismo enfoque que ya usa
+`restaurant-manager` para categorizar productos. Lee la descripción y
+propone a qué insumo pertenece; de paso saca la presentación (`1/5kg` →
+paquete de 5 kg → 5 000 g) y las unidades que faltan. Cuando la
+descripción no dice nada, cae a la unidad de la factura, y si tampoco,
+a la de la categoría — carnes, pollo y mariscos en kilos.
+
+**Nada de eso se activa solo.** La sugerencia entra como *sugerida* y
+espera. Un mapeo equivocado se vuelve invisible apenas está adentro de un
+costo, así que la confirmación es de una persona, siempre. Si no hay llave
+de API, o se cae la red, la cola sigue funcionando con comparación de
+texto: más tosca, pero nunca se queda en blanco.
+
+### El constructor de recetas
+
+La pantalla para la que existe todo lo demás.
+
+A la izquierda un buscador con los insumos y las preparaciones. **Se
+arrastran** a la receta, o se agregan con un botón — arrastrar es el camino
+rápido, nunca el único. Cada línea tiene su cantidad como campo numérico y
+un selector de unidad que solo ofrece unidades compatibles. Se cambia un
+número y **el costo se mueve solo**: el de la línea, el total y el de la
+porción.
+
+Cada línea muestra cuánto cuesta y qué porcentaje del plato representa,
+porque «qué es lo caro acá» es la pregunta de esa pantalla. Una preparación
+se abre en el mismo lugar para ver su desglose.
+
+Si a algún ingrediente le falta precio, el total **no se muestra**. Ni
+gris, ni parcial, ni aproximado: un guion, un aviso, y el nombre del
+ingrediente que falta con su enlace. Un número en pantalla es un número que
+alguien va a usar.
+
+### Histórico
+
+Cuánto costaba este plato hace tres meses. Una foto diaria del costo, con
+el método y la ventana que se usaron ese día, en la misma tarjeta que
+`restaurant-manager` ya usa para el histórico de precios.
+
+---
+
+## Qué falta
+
+**Todo lo de arriba.** Lo que sí está, hoy:
+
+- El diseño completo, con sus decisiones y el porqué de cada una —
+  `PLAN.md`, 15 decisiones numeradas y 8 reglas innegociables.
+- El modelo de datos (10 tablas) y el esqueleto que levanta con
+  `docker compose up`.
+- El motor de costeo: conversión de unidades, los seis métodos, la merma,
+  el recorrido del grafo de recetas y la detección de ciclos — con 51
+  pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
+  una salsa que se contiene a sí misma, unidades incompatibles).
+
+Y después de la fase 1 quedan dos más, ya pensadas pero sin diseñar:
+
+- **Fase 2 — precio de venta y margen.** Cuánto cobrás, cuánto te queda,
+  qué porcentaje de food cost, y el precio sugerido a partir de un food
+  cost objetivo. Más alertas cuando el costo de un plato se corre.
+- **Fase 3 — ingeniería de menú.** Los cuadrantes de popularidad contra
+  rentabilidad. **Bloqueada**, y conviene decirlo claro: necesita las
+  ventas *por plato*, y eso hoy no existe en ninguno de los dos apps — el
+  `/ventas` de `restaurant-manager` lee totales diarios de un Excel, sin
+  desglose. La fase 3 arranca con una pregunta que no es de este app:
+  ¿puede el POS exportar ventas por plato?
+
+---
+
+## Limitaciones conocidas
+
+- **No hay autenticación**, igual que `restaurant-manager`, y por eso está
+  amarrado a `127.0.0.1`. No lo expongás a internet.
+- **No se convierten gramos a mililitros.** Un litro de agua es un kilo;
+  un litro de aceite, de miel o de crema no. Convertir entre peso y volumen
+  necesita la densidad del insumo, y hasta que esté escrita el app se
+  niega a hacerlo en vez de adivinar.
+- **Sin Alembic.** Las tablas se crean solas la primera vez, pero agregar
+  una columna a una tabla que ya existe pide un `ALTER TABLE` a mano. Es
+  deuda heredada del otro app, tomada a conciencia y anotada como tal.
+- **El costo depende de que el catálogo esté al día.** Si la
+  sincronización falla, el app no se cae: sigue costeando con lo que tiene
+  y muestra de cuándo es. Un número viejo se lee como viejo, no como
+  actual.
+
+---
+
+## Documentos
+
+- **`PLAN.md`** — el diseño. Qué se decidió, por qué, y qué queda abierto.
+  Leerlo antes de proponer arquitectura.
+- **`CLAUDE.md`** — convenciones y reglas para trabajar en este repo.

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Menu Builder{% endblock %}</title>
+  <link rel="stylesheet" href="{{ static_url('app.css') }}">
+</head>
+<body>
+  <nav class="rail">
+    <div class="rail__brand">{{ company_name }}</div>
+    <a class="rail__link {% if seccion == 'recetas' %}is-on{% endif %}" href="/recetas">Menú</a>
+    <a class="rail__link {% if seccion == 'preparaciones' %}is-on{% endif %}" href="/preparaciones">Preparaciones</a>
+    <a class="rail__link {% if seccion == 'insumos' %}is-on{% endif %}" href="/insumos">Insumos</a>
+    <a class="rail__link rail__link--sub {% if seccion == 'mapeo' %}is-on{% endif %}" href="/insumos/mapeo">
+      Mapeo{% if pendientes_mapeo %} <span class="pip pip--warn">{{ pendientes_mapeo }}</span>{% endif %}
+    </a>
+    <a class="rail__link rail__foot {% if seccion == 'ajustes' %}is-on{% endif %}" href="/ajustes">Ajustes</a>
+  </nav>
+  <main class="stage">
+    <header class="stage__head">
+      <h1>{% block heading %}{% endblock %}</h1>
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

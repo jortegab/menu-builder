@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% set seccion = 'recetas' %}
+{% block title %}Menú · Menu Builder{% endblock %}
+{% block heading %}Menú{% endblock %}
+{% block content %}
+<div class="card">
+  {% if recetas %}
+    {# Phase 1.5 -- the plato list with cost per portion and estado. #}
+  {% else %}
+    <p class="empty">Todavía no hay recetas.</p>
+    <p class="empty__hint">
+      Empezá conectando el catálogo de restaurant-manager desde Ajustes y
+      mapeando los primeros insumos. Ver <code>PLAN.md</code> §11, fase 1.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}
