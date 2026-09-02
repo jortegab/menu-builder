@@ -250,7 +250,13 @@ class InsumoFuente(Base):
     factor_origen: Mapped[str] = mapped_column(String(30), default="sin_resolver")
 
     status: Mapped[str] = mapped_column(String(20), default="suggested")
-    mapped_by: Mapped[str] = mapped_column(String(10), default="llm")  # llm | human
+    # llm | human. **Stays a string, never becomes a boolean** (D29): when
+    # the suite grows multi-user, a nullable `confirmed_by_user_id` joins it
+    # so this records *which* human. A mis-merged insumo is invisible once
+    # it is inside a cost, and "who confirmed this?" is the first question
+    # asked when one surfaces. Collapsing it to `confirmed_by_human: bool`
+    # would be a small simplification today and an archaeology problem later.
+    mapped_by: Mapped[str] = mapped_column(String(10), default="llm")
     mapping_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
 
     # A confirmed source can be switched off without losing the mapping --

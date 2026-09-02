@@ -208,7 +208,7 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
 **Todo lo de arriba.** Lo que sí está, hoy:
 
 - El diseño completo, con sus decisiones y el porqué de cada una —
-  `PLAN.md`, 21 decisiones numeradas y 8 reglas innegociables.
+  `PLAN.md`, 29 decisiones numeradas y 8 reglas innegociables.
 - El modelo de datos (10 tablas) y el esqueleto que levanta con
   `docker compose up`.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
@@ -243,6 +243,19 @@ Y después de la fase 1 quedan dos más, ya pensadas pero sin diseñar:
   exporta ventas por plato, así que ya no está bloqueada; falta definir en
   qué formato viene el archivo y dónde cae. Ojo: esos datos entran acá
   directo, no por `restaurant-manager`, que solo lee totales diarios.
+
+Y aparte de las fases, una cosa que no es una función sino un requisito
+para vendérselo a otro restaurante: **usuarios**. Hoy los dos apps asumen
+una sola persona, sin login, y lo único que los protege es que no se
+alcanzan desde la red. El diseño ya está escrito (`PLAN.md` §16) y cubre
+los dos apps con una sola lógica: `restaurant-manager` maneja los usuarios
+y `menu-builder` valida la sesión sin tener que preguntarle nada — así, si
+el otro app se cae, el costeo sigue abriendo.
+
+La regla que no se negocia: **el login entra en el mismo commit que el
+cambio de red.** El día que esto se abra a la red local para que la cocina
+lo vea en una tablet, «sin login» deja de ser una simplificación y pasa a
+ser una puerta abierta.
 
 ---
 

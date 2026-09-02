@@ -219,6 +219,25 @@ consume the *result* of that math instead of racing a second copy of it.
 
 ### 5.1 Endpoints
 
+**The `v1` is load-bearing, not decoration** (D22). For a single local
+install with one consumer on the same machine it would be theatre — you
+would just change both repos in one sitting and never run two versions at
+once. It is in the path because **this app is intended to ship to other
+restaurants eventually** (2026-09-02), and the moment there are two
+customers there are two independently-updated installs: customer A's
+`restaurant-manager` will be older than customer B's `menu-builder`, and no
+one can force a simultaneous upgrade across sites. That is exactly the
+problem path versioning solves, and it is much cheaper to put the prefix in
+now than to retrofit it across deployed installs later.
+
+Because the prefix now means something, it carries an obligation: **a
+breaking change to a payload means `/api/v2`, not an edit to `/api/v1`.**
+Additive fields are fine and do not bump the version — the sync ignores
+fields it does not know. `GET /api/v1/version` stays alongside it and does
+the *other* job: it reports the minor contract revision so `catalog_sync`
+can fail loudly on something it does not recognize, rather than silently
+mis-parsing. Two mechanisms, two distinct jobs.
+
 ```
 GET /api/v1/version
     -> {"app": "restaurant-manager", "api": "1.0", "schema_hint": "<date>"}
@@ -1058,7 +1077,180 @@ Neither blocks Phase 1; each blocks the phase it names.
 
 ---
 
-## 15. Decision log
+## 15. Productizing — shipping this to other restaurants
+
+**The intent is to sell this eventually** (2026-09-02), and that changes
+what some of the decisions above *mean* even though it changes very little
+about what gets built next. Three answers bound the scope:
+
+**The product is the suite, not this app alone** (D23). `menu-builder`
+always ships together with `restaurant-manager`; it never has to source a
+catalog from anywhere else. That kills a whole branch of work — no pluggable
+`CatalogSource`, no manual-entry fallback, no spreadsheet importer — and the
+upstream API stays the single contract. The cost is a real product
+constraint, and it should be stated out loud rather than discovered by a
+prospect: **the suite requires Hacienda electronic invoicing**, so its
+market is Costa Rican restaurants (or wherever upstream's ingestion is
+taught to work). A restaurant without e-invoices has no price history, and
+with no price history this app has nothing to cost from.
+
+**One install per restaurant, single-tenant** (D24). Each customer gets
+their own Compose stack and their own database, exactly like today. No
+`tenant_id` on any table, no scoping on any query, and data isolation is
+physical rather than enforced in code — which is the strongest kind.
+
+This is a **deliberate one-way door, and it is worth naming the exit cost**:
+if the product ever pivots to a hosted multi-tenant SaaS, retrofitting
+tenancy means a `tenant_id` on every table, a scope on every query, and the
+certainty that one missed `WHERE` leaks one restaurant's costs to another.
+That is a rewrite of the data-access layer, not a migration. We are walking
+through that door knowingly, because per-site installs are how the customer
+already runs upstream and because the alternative would double Phase 1.
+
+**Act on none of it yet — just avoid one-way doors** (D25). Phase 1 is
+built for this restaurant, on real data, because a product nobody has used
+is a guess. What that costs us is only discipline, in one rule:
+
+> **Country- and customer-specific values live in `app_setting` or
+> `config.py`, never as literals inside a service module.**
+
+### The inventory of what is Costa-Rica-specific
+
+Kept honest here rather than rediscovered later. "Door" says how expensive
+it is to open when the second customer arrives.
+
+| assumption | where | door |
+|---|---|---|
+| 13% IVA + 10% servicio, servicio *outside* the IVA base (`/1.23`, D21) | Phase 2, not yet written | **Cheap — if it lands in `app_setting` from the start.** Three fields: `iva_pct`, `servicio_pct`, `servicio_en_base_iva`. Note the third is not obvious: this restaurant's own bills surprised us, so another restaurant's will too |
+| Currency CRC and the `₡` symbol | `templating.py`'s `money` filter | Cheap — one filter reads a symbol from settings |
+| `America/Costa_Rica` | Compose, `.env` | Cheap — already an env var |
+| Metric units only (`g`/`ml`/`unidad`) | `services/units.py` `_UNITS` | Cheap — `_UNITS` is a table; `lb`/`oz` are two rows and a dimension already exists. Not a one-way door |
+| Spanish-only UI, and **Spanish error text inside pure services** (`units.py`, `graph.py`) | services + templates | **Medium, and the only genuinely sticky one.** Selling anywhere Spanish-speaking costs nothing; selling outside it means extracting strings from modules that currently raise them directly. Left as-is deliberately — the market is Costa Rica and Latin America, and premature i18n would make the services harder to read for no near-term gain |
+| Category slugs and the carnes/pollo/mariscos → `kg` default (§7.2 rule 4) | mapping | Cheap — it is already a rule table, and it is already per-install data |
+| `median_window`/90d default (D17) | `costing.py` | Cheap, but re-read D17: it was tuned against *this* catalog's data quality. For a new customer it is a sensible default, not a law |
+| No auth, bound to `127.0.0.1` | Compose, upstream too | **Medium, and it is the first thing to build before a second customer.** One login per install is enough — single-tenant means no roles, no invitations, no tenancy |
+
+### What this does *not* change
+
+Phase 1's plan, in full. No step gains scope, no table gains a column, and
+the costing engine is untouched — cost math is not country-specific. The
+`v1` in the API path (D22) is the one thing already built differently
+because of this, and it was nearly free.
+
+---
+
+## 16. Multi-user — for both apps, one design
+
+Today both apps assume exactly one person: no auth, bound to `127.0.0.1`,
+and every action attributed to "the operator". That holds for one owner on
+one laptop and stops holding twice over — once when a second person at
+*this* restaurant needs access, and again at the first customer who is not
+the person who commissioned the software.
+
+**This is written here, but half of it is work in `restaurant-manager`.**
+It is a suite-level design and splitting it across two documents is how the
+two apps end up with two different login screens. When it is built, upstream
+needs its own decision-log entry and doc updates — that repo's own rule, and
+this section does not substitute for it.
+
+### The rule that makes it safe
+
+> **Auth ships with the network change, never after it.**
+
+Multi-user in practice means the chef opens it on a tablet, which means
+binding to `0.0.0.0` instead of `127.0.0.1`. Today the *only* thing
+protecting either app is that it is unreachable from the network — upstream's
+own README says so, in capitals. The moment that bind changes, "no auth"
+stops being a reasonable simplification and becomes an open door onto the
+restaurant's LAN. The two changes are one change, and they land in one
+commit or not at all.
+
+TLS is the open question that comes with it: a signed cookie over plain HTTP
+on a shared LAN is sniffable. Either the deployment stays on a trusted
+network and accepts that, or it terminates TLS locally. Decide it then, with
+the actual network in front of you — but do not let it delay the auth work,
+because unauthenticated-on-the-LAN is strictly worse than
+authenticated-over-HTTP.
+
+### One identity for the suite, not one per app (D26)
+
+Two logins, on one machine, for one restaurant, is a product defect. So:
+
+**`restaurant-manager` is the identity provider.** It is the anchor app —
+it must be installed for the suite to work at all (D23), it already has
+`audit_log`, and it already owns every other piece of master data. It grows
+a `user` table and a login screen; `menu-builder` grows neither.
+
+**`menu-builder` verifies a signed token locally, and never calls upstream
+to authenticate.** On login, upstream sets a cookie carrying the user id,
+role and an expiry, signed with an HMAC secret shared through both `.env`
+files (`AUTH_SHARED_SECRET`, generated once at install). This app verifies
+the signature offline.
+
+That last property is the whole reason for this shape rather than a token
+introspection call. The existing coupling degrades gracefully — if upstream
+is down, the catalog mirror just ages and costing keeps working (§5.3).
+**Auth-by-API-call would not degrade**: upstream down would mean nobody can
+open the recipe screens, turning a soft dependency into a hard one. A
+locally-verified signature keeps the failure mode where it already is.
+
+The cookie mechanism works because **cookies are not isolated by port**: one
+set for the install's hostname is sent to `:8000` and `:8001` alike. That is
+usually a footgun; here it is exactly the property we want, and it is
+available only because both apps are deployed on one host by design (D24).
+Worth writing down precisely because it looks like an accident.
+
+### Roles: four, and no permission matrix (D27)
+
+Single-tenant, one restaurant, a handful of people. Roles map to jobs, not
+to screens:
+
+| role | `restaurant-manager` | `menu-builder` |
+|---|---|---|
+| `admin` (dueño) | everything | everything |
+| `contabilidad` | AP, pagos, impuestos, servicios, gastos fijos, caja chica | read-only |
+| `cocina` | read-only productos and precios | recetas, preparaciones, insumos, mapeo |
+| `consulta` | read-only | read-only |
+
+Deliberately **not** built: per-module permissions, custom roles,
+invitations, OAuth/SSO, MFA, password-expiry policies. Every one of those is
+a tenancy-shaped feature, and D24 says there is no tenancy. If a customer
+genuinely needs a fifth role, that is a conversation, not a matrix.
+
+### What multi-user actually buys: attribution (D28)
+
+Login is the cost; the audit trail is the return, and it is the part worth
+being deliberate about. Both apps already record *which rule fired* for
+automatic decisions — the missing half is *which person* made the manual
+ones:
+
+- **Upstream:** who registered a supplier, who liquidated a payable, who
+  confirmed a credit note out of the review queue, who edited a category.
+- **Here:** who confirmed a product→insumo mapping, who set a merma, who
+  changed a costing method, who edited a recipe. `InsumoFuente.mapped_by`
+  currently distinguishes `llm` from `human`; with users it should say
+  *which* human — a mis-merged insumo is invisible once it is inside a cost
+  (non-negotiable #4), and "who confirmed this" is the first question when
+  one surfaces.
+
+### The one thing to do now, because it is free
+
+Nothing above gets built in Phase 1. The single cheap precaution, in the
+spirit of D25:
+
+> **Leave room for an actor.** Where this app records that a human did
+> something — `InsumoFuente.mapped_by` / `confirmed_at`, and every future
+> audit row — assume a nullable `..._by_user_id` will be added beside it.
+> Do not collapse "a human did this" into a boolean, and do not make
+> `mapped_by` an enum that cannot carry an id later.
+
+Retrofitting that is a nullable column and a backfill of `NULL`, which is
+cheap. Retrofitting it into a design that recorded only `True` is an
+archaeology problem.
+
+---
+
+## 17. Decision log
 
 | # | Decision | Rationale | Date | Status |
 |---|---|---|---|---|
@@ -1082,4 +1274,12 @@ Neither blocks Phase 1; each blocks the phase it names.
 | D18 | Traversal depth capped at 5, not 8 | The kitchen nests three (fondo → salsa → plato); 5 leaves two levels of headroom while surfacing a runaway nest at the fourth hop rather than the eighth | 2026-09-02 | Confirmed |
 | D19 | The API coalesces the CRC price; it never passes `precio_unitario_crc` through raw | That column is NULL for every CRC purchase by design — 17 272 of 17 645 live rows. A pass-through plus "drop the nulls" would discard 98% of the catalog and fail as silence rather than as an error. A NULL `moneda` (310 rows) is treated as CRC, per Hacienda's own default | 2026-09-02 | Confirmed |
 | D20 | The mapping queue defaults to food categories bought within 180 days (~400 of 1 420 rows), sorted by purchase volume, with bulk confirm on day one | 1 420 rows is not a sitting, and a queue that cannot be drained gets abandoned. Non-food categories (Empaques, Menaje, Limpieza, Higiene, Oficina, Utilidades — 415 products) are never recipe ingredients | 2026-09-02 | Confirmed |
+| D22 | `/api/v1` keeps its path version, and a breaking payload change means `/api/v2` rather than an edit in place | Cargo-cult for a single local consumer — you would just change both repos at once. Real once the suite ships to other restaurants (2026-09-02): two customers means two independently-updated installs, and no one can force a simultaneous upgrade across sites. Far cheaper to include now than to retrofit across deployed installs. `GET /api/v1/version` does the *other* job — the minor revision the sync fails loudly on | 2026-09-02 | Confirmed |
+| D23 | The product is the **suite**: `menu-builder` always ships with `restaurant-manager` and never sources a catalog elsewhere | Kills a whole branch of work (no pluggable `CatalogSource`, no manual entry, no importer) and keeps the upstream API as the single contract. Accepted cost, stated plainly: the suite requires Hacienda electronic invoicing, so the market is Costa Rica. No e-invoices means no price history means nothing to cost from | 2026-09-02 | Confirmed |
+| D24 | One install per restaurant, **single-tenant**. No `tenant_id` anywhere | Matches how the customer already runs upstream; isolation is physical rather than code-enforced, which is the strongest kind. A deliberate one-way door: a SaaS pivot would mean a tenant column on every table, a scope on every query, and one missed `WHERE` leaking one restaurant's costs to another — a rewrite of the data-access layer, not a migration. Walked through knowingly, because the alternative doubles Phase 1 | 2026-09-02 | Confirmed |
+| D25 | Build Phase 1 for this restaurant; act on productization only by **avoiding one-way doors** | A product nobody has used is a guess. The whole cost is one discipline — country- and customer-specific values live in `app_setting`/`config.py`, never as literals inside a service module. §15 inventories every CR-specific assumption and prices the door on each | 2026-09-02 | Confirmed |
+| D26 | Multi-user: `restaurant-manager` is the identity provider; `menu-builder` verifies a signed cookie **offline** with a shared HMAC secret | One login for the suite — two would be a product defect. Offline verification keeps the failure mode where it already is: upstream down currently means the mirror ages and costing still works, whereas auth-by-API-call would mean nobody can open a recipe. Relies on cookies not being port-isolated across one host, which is available only because D24 puts both apps on one machine | 2026-09-02 | Proposed |
+| D27 | Four fixed roles (`admin`, `contabilidad`, `cocina`, `consulta`), no permission matrix | Roles map to jobs, not screens. Per-module permissions, custom roles, invitations, SSO and MFA are all tenancy-shaped features, and D24 says there is no tenancy | 2026-09-02 | Proposed |
+| D28 | Auth ships **in the same commit** as the `0.0.0.0` bind, never after | Today the only thing protecting either app is being unreachable from the network. The bind change is what turns "no auth" from a simplification into an open door onto the restaurant's LAN, so the two are one change | 2026-09-02 | Confirmed |
+| D29 | Leave room for an actor now: never collapse "a human did this" into a boolean | The only free precaution multi-user needs in Phase 1. Adding a nullable `..._by_user_id` later is a column and a `NULL` backfill; recovering *who* from a design that stored only `True` is archaeology | 2026-09-02 | Confirmed |
 | D21 | Phase 2 strips an all-in menu price with **one constant, `/1.23`** — every price is set as base + 13% IVA + 10% servicio, both on the base | Operator's own pricing rule, verified against 620 days: IVA is exactly 13.00% of `subtotal − descuento` on 617 of them and never above, while IVA ÷ (subtotal + servicio) is 11.86% — so servicio is not in the IVA base and the divisor is 1.23, not 1.243. **Supersedes this row's first draft**, which called for per-plato `lleva_servicio`/`iva_pct` flags: that was inferred from aggregate ratios below 10%/13%, and the gap is the sales mix (takeout carries no servicio), not the pricing rule. Corollary: never apply `/1.23` to aggregate sales — servicio there ranges 6.24-10.00% of subtotal daily; use the file's own `Subtotal − Descuento` | 2026-09-02 | Confirmed (revised same day) |

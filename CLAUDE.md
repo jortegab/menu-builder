@@ -9,7 +9,7 @@ e-invoice ingestion app, over a read-only JSON API. This app never
 recomputes upstream's price math and never writes to it.
 
 **Read `PLAN.md` before proposing architecture.** It has the full design,
-21 numbered decisions with rationale, 8 non-negotiables, and the open
+29 numbered decisions with rationale, 8 non-negotiables, and the open
 questions. Do not redesign what is already decided there — if you think a
 decision is wrong, say so and argue it, but do not silently deviate.
 
@@ -76,7 +76,7 @@ backend/app/
   routers/
     recetas.py      Phase 0 stub
 tests/              unittest, one module per pure service
-PLAN.md             the design. 21 decisions, 8 non-negotiables
+PLAN.md             the design. 29 decisions, 8 non-negotiables
 ```
 
 **The three `services/` modules are pure on purpose** — no DB, no network,
@@ -208,6 +208,48 @@ incompleteness propagating up through a nested preparación.
 
 When DB-touching code arrives, add a `tests/dbcase.py` harness like
 upstream's rather than mocking the session.
+
+---
+
+## This is meant to become a product
+
+The suite (`restaurant-manager` + `menu-builder`, always together — D23) is
+intended to ship to other restaurants. Phase 1 is still built for **this**
+restaurant on **real** data, and productization is acted on only by
+**avoiding one-way doors** (D25). What that costs you is one rule:
+
+> **Country- and customer-specific values live in `app_setting` or
+> `config.py`, never as literals inside a service module.**
+
+`PLAN.md` §15 inventories every Costa-Rica-specific assumption and prices
+how expensive each is to change. Two are worth knowing before you write
+code:
+
+- **Phase 2's `/1.23`** (13% IVA + 10% servicio, servicio *outside* the IVA
+  base) must land in `app_setting` as three fields — `iva_pct`,
+  `servicio_pct`, `servicio_en_base_iva` — not as a constant. The third one
+  is not obvious: this restaurant's own bills contradicted the textbook, so
+  another restaurant's will too.
+- **Spanish error text currently lives inside the pure services**
+  (`units.py`, `graph.py` raise Spanish messages). That is deliberate — the
+  market is Costa Rica and Latin America, and premature i18n would make
+  those modules harder to read. It is also the one *sticky* assumption in
+  the inventory. Do not add more of it than the errors already there.
+
+**Deployment is one install per restaurant, single-tenant** (D24). There is
+no `tenant_id` on any table and there must not be one — isolation is
+physical. Do not add tenancy scaffolding "for later"; a SaaS pivot is a
+rewrite of the data-access layer, and that trade was made knowingly.
+
+**Multi-user is designed but unbuilt** (`PLAN.md` §16, D26-D29). Two rules
+bind you now:
+
+- **Auth ships in the same commit as the `0.0.0.0` bind, never after**
+  (D28). The only thing protecting either app today is being unreachable
+  from the network.
+- **Never collapse "a human did this" into a boolean** (D29).
+  `InsumoFuente.mapped_by` is a string for this reason; a nullable
+  `confirmed_by_user_id` joins it later.
 
 ---
 
