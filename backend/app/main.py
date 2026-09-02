@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import init_db
-from .routers import recetas
+from .routers import ajustes, recetas
 from .templating import templates
 
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +37,7 @@ app.mount(
     StaticFiles(directory=str(Path(__file__).parent / "static")),
     name="static",
 )
+app.include_router(ajustes.router)
 app.include_router(recetas.router)
 
 templates.env.globals["company_name"] = settings.company_name

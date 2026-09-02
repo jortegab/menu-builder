@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% set seccion = 'ajustes' %}
+{% block title %}Ajustes · Menu Builder{% endblock %}
+{% block heading %}Ajustes{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h2 class="card__title">Catálogo de restaurant-manager</h2>
+  <p class="muted">
+    Los precios de este app salen del catálogo de <code>restaurant-manager</code>.
+    Acá se traen. Es una copia: se puede reconstruir entera cuando sea, y
+    nada de lo que vive solo acá se pierde si se borra.
+  </p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi__label">Productos</div><div class="kpi__value">{{ productos }}</div></div>
+    <div class="kpi"><div class="kpi__label">Compras</div><div class="kpi__value">{{ precios }}</div></div>
+    <div class="kpi">
+      <div class="kpi__label">Última sincronización</div>
+      <div class="kpi__value kpi__value--sm">
+        {% if as_of %}{{ as_of.strftime('%d/%m/%Y %H:%M') }}{% else %}nunca{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="muted small">
+    Origen: <code>{{ upstream }}</code>
+    {% if watermark %}· trae solo lo modificado desde {{ watermark.strftime('%d/%m/%Y %H:%M') }}{% endif %}
+  </p>
+
+  <div class="actions">
+    <form method="post" action="/ajustes/sincronizar">
+      <button class="btn" type="submit">Sincronizar</button>
+    </form>
+    <form method="post" action="/ajustes/sincronizar?full=1">
+      <button class="btn btn--ghost" type="submit">Reconstruir todo</button>
+    </form>
+  </div>
+  <p class="muted small">
+    «Sincronizar» trae solo lo que cambió — es cuestión de segundos.
+    «Reconstruir todo» vuelve a leer el catálogo completo y tarda cerca de
+    un minuto; hace falta solo si algo quedó raro.
+  </p>
+</div>
+
+<div class="card">
+  <h2 class="card__title">Últimas sincronizaciones</h2>
+  {% if runs %}
+  <table class="grid">
+    <thead>
+      <tr><th>Cuándo</th><th>Estado</th><th class="num">Productos</th><th class="num">Compras nuevas</th><th>Detalle</th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td>{{ (r.finished_at or r.started_at).strftime('%d/%m/%Y %H:%M') }}</td>
+        <td>
+          {% if r.status == 'ok' %}<span class="pip">Listo</span>
+          {% elif r.status == 'error' %}<span class="pip pip--alert">Falló</span>
+          {% else %}<span class="pip pip--warn">Corriendo</span>{% endif %}
+        </td>
+        <td class="num">{{ r.productos_upserted }}</td>
+        <td class="num">{{ r.precios_inserted }}</td>
+        <td class="muted small">{{ r.error or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Todavía no se ha sincronizado nada.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -219,7 +219,7 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
 - El modelo de datos (10 tablas) y el esqueleto que levanta con
   `docker compose up`.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 55
+  el recorrido del grafo de recetas y la detección de ciclos — con 74
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
   una salsa que se contiene a sí misma, unidades incompatibles).
 

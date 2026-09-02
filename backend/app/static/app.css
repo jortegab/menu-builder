@@ -75,3 +75,41 @@ body {
 
 .empty { color: var(--ink-soft); margin: 0; }
 .empty__hint { color: var(--ink-soft); font-size: 13px; margin: 8px 0 0; }
+
+/* --- Ajustes / sync panel ------------------------------------------- */
+.card__title { margin: 0 0 6px; font-size: 15px; }
+.card + .card { margin-top: 16px; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 12px; }
+
+.kpis { display: flex; gap: 12px; margin: 16px 0 12px; flex-wrap: wrap; }
+.kpi {
+  flex: 1 1 140px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+.kpi__label { color: var(--ink-soft); font-size: 12px; }
+.kpi__value { font-size: 22px; margin-top: 2px; }
+.kpi__value--sm { font-size: 15px; }
+
+.actions { display: flex; gap: 8px; margin: 4px 0 8px; }
+.btn {
+  padding: 7px 14px;
+  border: 1px solid var(--teal);
+  border-radius: 8px;
+  background: var(--teal);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn--ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.btn--ghost:hover { background: var(--paper); filter: none; }
+
+.grid { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.grid th, .grid td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.grid th { color: var(--ink-soft); font-weight: 500; font-size: 12px; }
+.grid .num { text-align: right; }
+.pip--ok { color: var(--teal); background: var(--teal-soft); border: 1px solid var(--teal); }

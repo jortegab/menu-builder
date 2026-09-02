@@ -23,8 +23,9 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.1.** Design, skeleton, data model, and the pure costing
-engine with its tests. **No screens yet** beyond a stub `/recetas`.
+**Phase 1, step 1.2.** Design, data model, the pure costing engine, and the
+catalog mirror — all against real data. Screens so far: `/ajustes` (the sync
+panel) and a stub `/recetas`.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
 `/api/v1` — six read-only GET endpoints over the catalog and price history,
@@ -39,8 +40,27 @@ Two things it confirmed that matter for the next step:
 - **Money arrives as a string** (`"1039.6040"`), never a JSON number. Parse
   it with `Decimal(...)`, never `float(...)`.
 
-**Next: step 1.1** — `services/catalog_sync.py` plus the mirror tables that
-already exist in `models.py`.
+**Step 1.1 is done too** (2026-09-02). `services/catalog_client.py` (network)
+and `services/catalog_sync.py` (DB) fill the mirror, with `/ajustes` as the
+control panel. Proven against the live API: **1 420 productos and 17 645
+compras in 46 s**, incremental re-sync in ~2 s, zero null CRC prices across
+every row.
+
+Three properties of the sync are load-bearing, and each has tests:
+
+- **Idempotent by construction, not by care.** Products key on
+  `internal_code` and price points on `(clave, numero_linea)` — upstream's
+  own natural keys — so a re-run writes the same rows and changes nothing.
+  `full=True` re-walks everything and is always a safe repair.
+- **The watermark is derived from the mirror** (`max(upstream_updated_at)`),
+  never from a wall clock. Re-fetching a boundary row is free; assuming two
+  machines agree about "now" is not.
+- **A failed sync is not an error state.** `sync_catalog` never raises for
+  anything upstream does — it records the run, leaves the mirror alone, and
+  costing carries on against slightly older data. Only `mirror_as_of`
+  advances on success, so a stale figure can be shown as stale.
+
+**Next: step 1.2** — insumo CRUD (unidad de uso, merma, método/ventana).
 
 Do not describe unbuilt features as working, in the UI or in the docs.
 README's "qué va a hacer" section is explicitly labelled as unbuilt; keep
@@ -86,20 +106,36 @@ backend/app/
   services/
     units.py        unit conversion. Pure, no imports beyond Decimal
     costing.py      price series -> one price, then merma. Pure
+    catalog_client.py  httpx client for upstream /api/v1. Network only
+    catalog_sync.py    fills the mirror. Idempotent; never raises for
+                    anything upstream does
     graph.py        recipe DAG: cycle detection, depth-limited traversal,
                     cost aggregation. Pure
   routers/
+    ajustes.py      /ajustes: the sync panel. Sync runs synchronously in
+                    the request -- deliberate for a local single-operator
+                    app (~2s incremental), not an oversight
     recetas.py      Phase 0 stub
-tests/              unittest, one module per pure service
+tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
 PLAN.md             the design. 29 decisions, 8 non-negotiables
 ```
 
-**The three `services/` modules are pure on purpose** — no DB, no network,
-no settings import — the same way upstream keeps `currency.py`,
+**`units.py`, `costing.py` and `graph.py` are pure on purpose** — no DB, no
+network, no settings import — the same way upstream keeps `currency.py`,
 `unit_conversion.py` and `period_keys.py` importable without a driver. The
-whole of PLAN.md §7 is testable without Postgres, and it is. Keep it that
-way: when the DB-facing half arrives (`catalog_sync.py`,
-`insumo_costs.py`), it imports these, never the reverse.
+whole of PLAN.md §7 is testable without Postgres, and it is.
+
+**The dependency runs one way and must keep running one way.** The
+DB- and network-facing modules (`catalog_sync.py`, `catalog_client.py`, and
+`insumo_costs.py` when it lands) import the pure ones; never the reverse.
+The moment `costing.py` needs a `Session` to do its job, the cost math stops
+being checkable without infrastructure — which is exactly the property that
+makes it trustworthy.
+
+`catalog_client.py` is split from `catalog_sync.py` for the same reason
+upstream splits `gmail.py` from `gmail_match.py`: the sync's decisions —
+what to upsert, what to skip, how the watermark moves — are tested against
+a fake client, with no `httpx` anywhere near them.
 
 ---
 
@@ -211,7 +247,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 55 tests today, all against the
+`unittest`, no pytest, matching upstream. 74 tests today, mostly against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the
