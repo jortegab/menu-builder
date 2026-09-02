@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% set seccion = 'insumos' %}
+{% block title %}{{ insumo.nombre }} · Menu Builder{% endblock %}
+{% block heading %}{{ insumo.nombre }}{% if not insumo.activo %} <span class="pip">Archivado</span>{% endif %}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div class="muted small">
+    {% if insumo.categoria_slug %}{{ insumo.categoria_slug }} · {% endif %}
+    <code>{{ insumo.slug }}</code>
+  </div>
+  <div class="actions">
+    <a class="btn btn--ghost" href="/insumos/{{ insumo.id }}/editar">Editar</a>
+    <form method="post" action="/insumos/{{ insumo.id }}/archivar">
+      <input type="hidden" name="activo" value="{{ '0' if insumo.activo else '1' }}">
+      <button class="btn btn--ghost" type="submit">
+        {{ 'Archivar' if insumo.activo else 'Reactivar' }}
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="card__title">Cómo se costea</h2>
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kpi__label">Unidad de uso</div>
+      <div class="kpi__value kpi__value--sm">{{ UNIDAD_LABELS.get(insumo.unidad_uso, insumo.unidad_uso) }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">Merma</div>
+      <div class="kpi__value kpi__value--sm">{{ insumo.merma_pct | pct }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">Método</div>
+      <div class="kpi__value kpi__value--sm">
+        {{ METODO_LABELS.get(insumo.metodo_costeo or metodo_default) }}
+        {% if not insumo.metodo_costeo %}<span class="muted small">(por defecto)</span>{% endif %}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi__label">Ventana</div>
+      <div class="kpi__value kpi__value--sm">
+        {{ insumo.ventana_dias or ventana_default }} días
+        {% if not insumo.ventana_dias %}<span class="muted small">(por defecto)</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% if insumo.merma_pct and insumo.merma_pct > 0 %}
+  <p class="muted small">
+    Con {{ insumo.merma_pct | pct }} de merma, el costo se reparte entre lo
+    que sobrevive: un precio de compra de ₡1 000 por
+    {{ insumo.unidad_uso }} sale a
+    {{ (1000 / (1 - (insumo.merma_pct / 100))) | money }} por
+    {{ insumo.unidad_uso }} usable.
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 class="card__title">Fuentes</h2>
+  {% if fuentes %}
+    <p>{{ fuentes }} producto(s) del catálogo alimentan este insumo.</p>
+  {% else %}
+    <p class="empty">Este insumo todavía no tiene ningún producto asociado.</p>
+    <p class="empty__hint">
+      Sin fuentes no hay precio, y sin precio este insumo no puede costear
+      ninguna receta — va a aparecer como faltante. La pantalla de mapeo,
+      que es donde se asocian, todavía no está construida.
+    </p>
+  {% endif %}
+</div>
+
+{% if insumo.notas %}
+<div class="card">
+  <h2 class="card__title">Notas</h2>
+  <p>{{ insumo.notas }}</p>
+</div>
+{% endif %}
+
+<p class="muted small">
+  {% if usos %}Usado en {{ usos }} línea(s) de receta.
+  {% else %}Todavía no lo usa ninguna receta.{% endif %}
+</p>
+
+{% endblock %}

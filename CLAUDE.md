@@ -23,9 +23,9 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.2.** Design, data model, the pure costing engine, and the
-catalog mirror — all against real data. Screens so far: `/ajustes` (the sync
-panel) and a stub `/recetas`.
+**Phase 1, step 1.3.** Design, data model, the pure costing engine, the
+catalog mirror and insumo CRUD — all against real data. Screens so far:
+`/insumos` and `/ajustes`, plus a stub `/recetas`.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
 `/api/v1` — six read-only GET endpoints over the catalog and price history,
@@ -40,7 +40,7 @@ Two things it confirmed that matter for the next step:
 - **Money arrives as a string** (`"1039.6040"`), never a JSON number. Parse
   it with `Decimal(...)`, never `float(...)`.
 
-**Step 1.1 is done too** (2026-09-02). `services/catalog_client.py` (network)
+**Steps 1.0 and 1.1 are done** (2026-09-02). `services/catalog_client.py` (network)
 and `services/catalog_sync.py` (DB) fill the mirror, with `/ajustes` as the
 control panel. Proven against the live API: **1 420 productos and 17 645
 compras in 46 s**, incremental re-sync in ~2 s, zero null CRC prices across
@@ -60,7 +60,33 @@ Three properties of the sync are load-bearing, and each has tests:
   costing carries on against slightly older data. Only `mirror_as_of`
   advances on success, so a stale figure can be shown as stale.
 
-**Next: step 1.2** — insumo CRUD (unidad de uso, merma, método/ventana).
+**Step 1.2 is done too** (2026-09-02): insumo CRUD at `/insumos` —
+create, edit, archive, search, and the three configuration fields.
+`services/insumos.py` owns the rules.
+
+**Validation lives in the service, not in the CHECK constraints.** Those
+stay as the last line of defence, but a constraint violation arrives as an
+opaque `IntegrityError` at commit time — the operator sees a 500 and their
+half-filled form is gone. `ValidationError` carries field-keyed Spanish
+messages so the template can put each one beside its own input, and the
+form re-renders with what they typed still in it.
+
+Three rules worth knowing before touching that module:
+
+- **`unidad_uso` is only `g`/`ml`/`unidad`** — the canonical unit of each
+  dimension. `kg` would work arithmetically and read badly on every recipe
+  (0.18 kg of pechuga), so it is not offered.
+- **A comma is a valid decimal separator.** Costa Rica writes `12,5`; a
+  form that rejects it is a form fighting its user.
+- **`metodo_costeo`/`ventana_dias` NULL means "follow the app default"**,
+  not "unset". An insumo that never had an opinion tracks the global
+  setting as it changes rather than freezing at creation time.
+
+Archiving never deletes: an insumo can be referenced by a `receta_linea`,
+and deleting one would orphan a recipe or silently change a plate cost.
+
+**Next: step 1.3** — the mapping queue (`/insumos/mapeo`), LLM suggestion
+with a deterministic fallback.
 
 Do not describe unbuilt features as working, in the UI or in the docs.
 README's "qué va a hacer" section is explicitly labelled as unbuilt; keep
@@ -107,6 +133,8 @@ backend/app/
     units.py        unit conversion. Pure, no imports beyond Decimal
     costing.py      price series -> one price, then merma. Pure
     catalog_client.py  httpx client for upstream /api/v1. Network only
+    insumos.py      insumo master data + validation. ValidationError
+                    carries field-keyed Spanish messages
     catalog_sync.py    fills the mirror. Idempotent; never raises for
                     anything upstream does
     graph.py        recipe DAG: cycle detection, depth-limited traversal,
@@ -115,6 +143,7 @@ backend/app/
     ajustes.py      /ajustes: the sync panel. Sync runs synchronously in
                     the request -- deliberate for a local single-operator
                     app (~2s incremental), not an oversight
+    insumos.py      /insumos: list, create, edit, archive
     recetas.py      Phase 0 stub
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
 PLAN.md             the design. 29 decisions, 8 non-negotiables
@@ -247,7 +276,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 74 tests today, mostly against the
+`unittest`, no pytest, matching upstream. 102 tests today, mostly against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the

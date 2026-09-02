@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% set seccion = 'insumos' %}
+{% block title %}Insumos · Menu Builder{% endblock %}
+{% block heading %}Insumos{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <form class="toolbar__filters" method="get" action="/insumos">
+    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Buscar insumo…">
+    <select class="input" name="estado" onchange="this.form.submit()">
+      <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activos</option>
+      <option value="archivados" {% if estado == 'archivados' %}selected{% endif %}>Archivados</option>
+      <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+    </select>
+    <button class="btn btn--ghost" type="submit">Buscar</button>
+  </form>
+  <a class="btn" href="/insumos/nuevo">Nuevo insumo</a>
+</div>
+
+<div class="card">
+  {% if insumos %}
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Insumo</th>
+        <th>Unidad de uso</th>
+        <th class="num">Merma</th>
+        <th>Método</th>
+        <th class="num">Fuentes</th>
+        <th class="num">Costo</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for i in insumos %}
+      <tr class="row-link" onclick="location.href='/insumos/{{ i.id }}'">
+        <td>
+          <strong>{{ i.nombre }}</strong>
+          {% if not i.activo %}<span class="pip">Archivado</span>{% endif %}
+          {% if i.categoria_slug %}<div class="muted small">{{ i.categoria_slug }}</div>{% endif %}
+        </td>
+        <td>{{ UNIDAD_LABELS.get(i.unidad_uso, i.unidad_uso) }}</td>
+        <td class="num">{{ i.merma_pct | pct }}</td>
+        <td>
+          {% if i.metodo_costeo %}{{ METODO_LABELS.get(i.metodo_costeo) }}
+          {% else %}<span class="muted">{{ METODO_LABELS.get(metodo_default) }} (por defecto)</span>{% endif %}
+        </td>
+        <td class="num">
+          {% set n = fuentes.get(i.id, 0) %}
+          {% if n %}{{ n }}{% else %}<span class="pip pip--warn">sin fuentes</span>{% endif %}
+        </td>
+        <td class="num muted">—</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">
+    La columna de costo queda en blanco hasta que cada insumo tenga
+    productos asociados — eso llega con el mapeo.
+  </p>
+  {% else %}
+    <p class="empty">
+      {% if q %}Ningún insumo coincide con «{{ q }}».{% else %}Todavía no hay insumos.{% endif %}
+    </p>
+    <p class="empty__hint">
+      Un insumo es lo que usa la cocina: «Pechuga deshuesada», no «filete de
+      pechuga deshuesada de Aviocal». Creá el primero y después se le
+      asocian los productos del catálogo.
+    </p>
+  {% endif %}
+</div>
+
+{% endblock %}

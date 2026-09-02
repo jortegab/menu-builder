@@ -877,7 +877,7 @@ is green.
 |---|---|---|
 | 1.0 | ~~**`/api/v1` in `restaurant-manager`**~~ — **done 2026-09-02** (upstream 0.75, `56653c8`): six GET endpoints, 27 tests, upstream D28/D29, verified against the live catalog | ✅ endpoints return real rows from the live DB |
 | 1.1 | ~~`catalog_sync` + mirror tables + Ajustes sync panel~~ — **done 2026-09-02**: 1 420 productos and 17 645 compras mirrored from the live API in 46 s; incremental re-sync 2 s | ✅ full catalog and price history mirrored; re-sync idempotent |
-| 1.2 | Insumo CRUD, unidad de uso, merma, método/ventana | an insumo can be created and configured by hand end to end |
+| 1.2 | ~~Insumo CRUD, unidad de uso, merma, método/ventana~~ — **done 2026-09-02** | ✅ an insumo can be created and configured by hand end to end |
 | 1.3 | Mapping queue + LLM suggestion + deterministic fallback | the real catalog is drainable into insumos in one sitting |
 | 1.4 | Costing engine wired to real data + "¿Por qué este costo?" | an insumo's cost matches a hand-computed figure from the same invoices |
 | 1.5 | `receta` / `receta_linea`, preparaciones, cycle guard | a salsa can be built and reused by two platos |

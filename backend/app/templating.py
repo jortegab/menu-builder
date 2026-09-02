@@ -53,7 +53,38 @@ def static_url(path: str) -> str:
     return f"/static/{path}?v={version}"
 
 
+# Spanish labels for the English enum values (D3). They live here, in the
+# presentation layer, and never in a service -- a service that knows how a
+# value is spelled on screen is a service that has to change when the
+# wording does.
+METODO_LABELS = {
+    "last": "Último precio",
+    "avg_window": "Promedio",
+    "weighted_avg_window": "Promedio ponderado",
+    "median_window": "Mediana",
+    "max_window": "Máximo",
+    "min_window": "Mínimo",
+}
+
+METODO_AYUDA = {
+    "last": "Lo que costaría cocinarlo hoy. El más intuitivo y el más brincón.",
+    "avg_window": "Promedio simple de la ventana.",
+    "weighted_avg_window": "Promedio pesado por cantidad: lo que de verdad pagaste en promedio.",
+    "median_window": "El precio típico. No se deja llevar por una factura rara.",
+    "max_window": "El peor caso reciente. Para costear conservador.",
+    "min_window": "El mejor caso reciente. Casi nunca es lo que querés.",
+}
+
+UNIDAD_LABELS = {
+    "g": "Gramos (g)",
+    "ml": "Mililitros (ml)",
+    "unidad": "Unidades",
+}
+
 templates.env.filters["money"] = money
 templates.env.filters["cantidad"] = cantidad
 templates.env.filters["pct"] = pct
 templates.env.globals["static_url"] = static_url
+templates.env.globals["METODO_LABELS"] = METODO_LABELS
+templates.env.globals["METODO_AYUDA"] = METODO_AYUDA
+templates.env.globals["UNIDAD_LABELS"] = UNIDAD_LABELS

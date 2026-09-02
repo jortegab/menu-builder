@@ -230,7 +230,7 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
   productos y 17 645 compras en 46 segundos, y unos 2 segundos cuando solo
   trae lo que cambió. Se maneja desde Ajustes.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 74
+  el recorrido del grafo de recetas y la detección de ciclos — con 102
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
   una salsa que se contiene a sí misma, unidades incompatibles).
 

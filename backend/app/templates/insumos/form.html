@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% set seccion = 'insumos' %}
+{% set editando = insumo is not none %}
+{% block title %}{{ 'Editar insumo' if editando else 'Nuevo insumo' }} · Menu Builder{% endblock %}
+{% block heading %}{{ 'Editar insumo' if editando else 'Nuevo insumo' }}{% endblock %}
+{% block content %}
+
+<form class="card form" method="post"
+      action="{{ '/insumos/' ~ insumo.id if editando else '/insumos' }}">
+
+  <div class="field">
+    <label for="nombre">Nombre</label>
+    <input class="input {% if errors.nombre %}input--bad{% endif %}" id="nombre" name="nombre"
+           value="{{ valores.nombre or '' }}" autofocus placeholder="Pechuga deshuesada">
+    {% if errors.nombre %}<p class="field__error">{{ errors.nombre }}</p>{% endif %}
+    <p class="field__hint">Como le dice la cocina, no como viene en la factura.</p>
+  </div>
+
+  <div class="field">
+    <label for="unidad_uso">Unidad de uso</label>
+    <select class="input {% if errors.unidad_uso %}input--bad{% endif %}" id="unidad_uso" name="unidad_uso">
+      {% for value, label in UNIDAD_LABELS.items() %}
+      <option value="{{ value }}" {% if valores.unidad_uso == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if errors.unidad_uso %}<p class="field__error">{{ errors.unidad_uso }}</p>{% endif %}
+    <p class="field__hint">
+      En qué se mide en las recetas. Se compra en paquetes de 5 kg y se usa
+      en gramos: acá va gramos.
+    </p>
+  </div>
+
+  <div class="field">
+    <label for="merma_pct">% de merma</label>
+    <input class="input input--sm {% if errors.merma_pct %}input--bad{% endif %}"
+           id="merma_pct" name="merma_pct" value="{{ valores.merma_pct or '0' }}" inputmode="decimal">
+    {% if errors.merma_pct %}<p class="field__error">{{ errors.merma_pct }}</p>{% endif %}
+    <p class="field__hint">
+      Cuánto se pierde al preparar — hueso, cáscara, recorte. A ₡4 000 el
+      kilo con 12% de merma, el kilo usable cuesta ₡4 545. Es una propiedad
+      del insumo, no de cada receta.
+    </p>
+  </div>
+
+  <div class="field">
+    <label for="metodo_costeo">Método de costeo</label>
+    <select class="input" id="metodo_costeo" name="metodo_costeo">
+      <option value="">Usar el de Ajustes — {{ METODO_LABELS.get(metodo_default) }}</option>
+      {% for value, label in METODO_LABELS.items() %}
+      <option value="{{ value }}" {% if valores.metodo_costeo == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if errors.metodo_costeo %}<p class="field__error">{{ errors.metodo_costeo }}</p>{% endif %}
+    <p class="field__hint">
+      Cuál precio creer cuando hay varias compras.
+      {% for value, ayuda in METODO_AYUDA.items() %}{% if valores.metodo_costeo == value %}{{ ayuda }}{% endif %}{% endfor %}
+    </p>
+  </div>
+
+  <div class="field">
+    <label for="ventana_dias">Ventana (días)</label>
+    <input class="input input--sm {% if errors.ventana_dias %}input--bad{% endif %}"
+           id="ventana_dias" name="ventana_dias" value="{{ valores.ventana_dias or '' }}"
+           inputmode="numeric" placeholder="{{ ventana_default }}">
+    {% if errors.ventana_dias %}<p class="field__error">{{ errors.ventana_dias }}</p>{% endif %}
+    <p class="field__hint">Cuánto hacia atrás mirar. En blanco usa {{ ventana_default }} días.</p>
+  </div>
+
+  <div class="field">
+    <label for="categoria_slug">Categoría</label>
+    <select class="input" id="categoria_slug" name="categoria_slug">
+      <option value="">— sin categoría —</option>
+      {% for slug in categorias %}
+      <option value="{{ slug }}" {% if valores.categoria_slug == slug %}selected{% endif %}>{{ slug }}</option>
+      {% endfor %}
+    </select>
+    <p class="field__hint">Las que trae el catálogo de restaurant-manager.</p>
+  </div>
+
+  <div class="field">
+    <label for="notas">Notas</label>
+    <textarea class="input" id="notas" name="notas" rows="2">{{ valores.notas or '' }}</textarea>
+  </div>
+
+  <div class="actions">
+    <button class="btn" type="submit">{{ 'Guardar' if editando else 'Crear insumo' }}</button>
+    <a class="btn btn--ghost" href="{{ '/insumos/' ~ insumo.id if editando else '/insumos' }}">Cancelar</a>
+  </div>
+</form>
+
+{% endblock %}
