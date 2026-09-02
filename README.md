@@ -12,11 +12,16 @@ historial de compras real, con descuentos, sin IVA, convertido a colones
 cuando la factura vino en dólares. Este app no vuelve a calcular nada de
 eso: lo lee.
 
-> **Estado: fase 0.** Está el diseño completo (`PLAN.md`), el esqueleto del
-> repo, el modelo de datos y el motor de costeo con sus pruebas. **Todavía
-> no hay pantallas.** Nada de lo que se describe abajo como «qué va a
-> hacer» está construido — se lista para que se entienda hacia dónde va,
-> no para dar a entender que ya corre. Ver «Qué falta».
+> **Estado: fase 1, paso 1.2.** Ya funciona la parte de abajo: el catálogo
+> de `restaurant-manager` se trae completo y se mantiene al día — **1 420
+> productos y 17 645 compras**, sincronizados contra el app real. Eso se
+> maneja desde **Ajustes**, que es la única pantalla que existe hoy.
+>
+> **Lo que todavía no existe son los insumos, las recetas y el costeo** —
+> o sea, casi todo lo que se describe abajo en «qué va a hacer». El motor
+> que calcula los costos sí está escrito y probado, pero no hay pantalla
+> que lo use todavía. Se lista para que se entienda hacia dónde va, no
+> para dar a entender que ya corre. Ver «Qué falta».
 
 ---
 
@@ -141,6 +146,9 @@ declara porciones.
 
 ## Qué va a hacer (fase 1, todavía sin construir)
 
+> Lo de esta sección **no está construido**, con una excepción: traer el
+> catálogo, que ya funciona y vive en Ajustes.
+
 ### Insumos
 
 La lista canónica: unidad de uso, merma, método, costo actual, cuántos
@@ -218,6 +226,9 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
   `PLAN.md`, 29 decisiones numeradas y 8 reglas innegociables.
 - El modelo de datos (10 tablas) y el esqueleto que levanta con
   `docker compose up`.
+- **La sincronización del catálogo**, funcionando contra el app real: 1 420
+  productos y 17 645 compras en 46 segundos, y unos 2 segundos cuando solo
+  trae lo que cambió. Se maneja desde Ajustes.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
   el recorrido del grafo de recetas y la detección de ciclos — con 74
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
