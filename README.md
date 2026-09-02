@@ -222,14 +222,21 @@ Y después de la fase 1 quedan dos más, ya pensadas pero sin diseñar:
   qué porcentaje de food cost, y el precio sugerido a partir de un food
   cost objetivo. Más alertas cuando el costo de un plato se corre.
 
-  Un detalle que ya se revisó contra el archivo de ventas real y que no es
-  menor: el precio del menú **trae IVA y servicio adentro**, y no se pueden
-  sacar con un solo divisor. El IVA se calcula sobre el subtotal (da entre
-  12,75% y 12,95%), no sobre subtotal + servicio; y el servicio anda entre
-  8,1% y 9,2% del subtotal en vez de un 10% parejo, o sea que hay ventas
-  que no llevan servicio del todo. Así que cada plato va a necesitar decir
-  si lleva servicio y con qué IVA, en vez de aplicarle a todos la misma
-  fórmula.
+  El precio del menú **siempre se pone con 13% de IVA y 10% de servicio
+  adentro**, los dos sobre la base. O sea que sacarlos es una sola cuenta:
+  `precio neto = precio del menú / 1,23`.
+
+  Es 1,23 y no 1,243, y eso quedó confirmado contra 620 días de ventas
+  reales: el IVA da **exactamente 13,00% del subtotal menos descuento en
+  617 de esos 620 días**, y nunca más. Si el servicio entrara en la base
+  del IVA, la relación sería 11,86% — no lo es. El servicio no paga IVA.
+
+  Un cuidado que vale la pena anotar: **esa división no se le aplica a las
+  ventas totales.** En el agregado el servicio anda entre 6,24% y 10,00%
+  del subtotal según el día (mediana 8,94%), porque parte de la venta no
+  lleva servicio — para llevar. El precio se fija parejo; la mezcla de
+  ventas no lo es. Para el food cost del restaurante entero se usa la
+  columna `Subtotal − Descuento` del archivo, que ya viene limpia.
 - **Fase 3 — ingeniería de menú.** Los cuadrantes de popularidad contra
   rentabilidad, y la comparación entre lo que las recetas *dicen* que se
   consumió y lo que el inventario dice que de verdad salió. El POS sí

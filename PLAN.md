@@ -880,31 +880,43 @@ build this, and the menu-wide view of which plates are drifting.
 `/api/v1/ventas` upstream (§5.4 B) lands here too, giving a real
 whole-restaurant food-cost % denominator instead of a target.
 
-**The menu price includes IVA *and* servicio** (Q5, answered 2026-09-02), so
-every margin figure starts by stripping both off an all-in number. **And it
-cannot be stripped with one constant** — this was checked against the real
-sales file rather than assumed, and the arithmetic does not match the
-textbook:
+**Every menu price is set as base × 1.23 — 13% IVA plus 10% servicio, both
+charged on the base** (Q5, answered 2026-09-02 by the operator, then
+verified against 620 days of real sales). So stripping it back is a single
+constant:
 
-| | expected | actual (`Ventas_Totales.xlsx`, Dec 2024 sample) |
+```
+precio_neto = precio_menu / 1.23
+```
+
+**It is 1.23 and not 1.243, and the sales file settles that decisively.**
+The textbook assumption is that servicio joins the IVA base (base × 1.10 ×
+1.13); it does not here:
+
+| basis | rate | verdict |
 |---|---|---|
-| servicio ÷ subtotal | 10.0% | **8.1% – 9.2%** |
-| IVA ÷ subtotal | 13.0% | 12.75% – 12.95% |
-| IVA ÷ (subtotal + servicio) | 13.0% | 11.95% |
+| IVA ÷ (subtotal − descuento) | **13.00%**, on **617 of 620 days**, never above | ✅ this is the base |
+| IVA ÷ subtotal | 12.92% | discount-shifted |
+| IVA ÷ (subtotal + servicio) | 11.86% | ❌ servicio is *not* in the IVA base |
 
-Two things follow. **IVA is computed on the subtotal, not on subtotal +
-servicio** — the ratios only land near 13% against the subtotal. And
-**servicio does not apply to every line**: at a flat 10% it would be exactly
-10% of the subtotal, and it is consistently one to two points below, which
-means some share of sales carries no servicio at all (takeout, or a category
-that is excluded).
+Two further facts that fall out, and the second one prevents a real bug:
 
-So Phase 2 cannot derive a net price from a menu price with a single
-divisor. It needs **per-plato (or per-category) flags — `lleva_servicio` and
-an `iva_pct`** — and the all-in price is decomposed through those. The
-upstream `Venta total = Subtotal + Servicio + IVA − Descuento` identity does
-reconcile exactly, so the file is trustworthy; it is the per-line
-composition that varies.
+- **Descuento is applied before IVA.** The 13.00% lands exactly on
+  `subtotal − descuento`, not on `subtotal`.
+- **Never apply the 1.23 divisor to aggregate sales.** Servicio runs
+  **6.24% – 10.00% of subtotal day to day** (median 8.94%; it hits exactly
+  10.00% on only 4 of 620 days), because a share of sales carries no
+  servicio at all — takeout. The pricing rule is uniform; the *sales mix*
+  is not. For the whole-restaurant food-cost denominator (§5.4 B), use the
+  file's own `Subtotal − Descuento`, which is already net of both, and never
+  a figure back-derived from `Venta total`.
+
+This **reverses an earlier draft of D21**, which called for per-plato
+`lleva_servicio` and `iva_pct` flags. Those were inferred from the aggregate
+ratios sitting below 10% and 13% — but that gap is the sales mix, not the
+pricing rule, and the fix was to ask what the operator actually does rather
+than to model the variance. One constant, no flags. Should a plate ever be
+priced differently, that is a new field with a real case behind it.
 
 Still open before building: is the target food-cost a single number or per
 category (§13 Q7).
@@ -978,7 +990,7 @@ the data changes.
 | Q2 | How big is the catalog? | **1 420 products, 32 suppliers, 17 645 purchase lines**, 2024-06-05 → 2026-09-01. 1 005 are food; 412 bought within 180 days *(measured)* | §8 |
 | Q3 | Default costing method? | **`median_window`, 90 days** — 6% of eligible products carry a bad invoice line, and for 54% the median is identical to every alternative anyway *(measured, then confirmed)* | §7.4 |
 | Q4 | How deep do preparaciones nest? | **Three** (fondo → salsa → plato). Depth cap set to 5, keeping two levels of headroom | §7.5 |
-| Q5 | What does a menu price include? | **IVA and servicio, both.** And it cannot be stripped with one constant — IVA is on the subtotal, and servicio does not apply to every line *(confirmed against the real sales file)* | §11, Phase 2 |
+| Q5 | What does a menu price include? | **13% IVA + 10% servicio, both on the base — every price, uniformly.** So `precio_neto = precio_menu / 1.23`, one constant. Servicio is *not* in the IVA base: IVA is exactly 13.00% of `subtotal − descuento` on 617 of 620 days *(operator's rule, then verified)* | §11, Phase 2 |
 | Q6 | Can the POS export per-dish sales? | **Yes.** Phase 3 is unblocked; the data lands here, not through upstream | §11, Phase 3 |
 
 ### Still open
@@ -1070,4 +1082,4 @@ Neither blocks Phase 1; each blocks the phase it names.
 | D18 | Traversal depth capped at 5, not 8 | The kitchen nests three (fondo → salsa → plato); 5 leaves two levels of headroom while surfacing a runaway nest at the fourth hop rather than the eighth | 2026-09-02 | Confirmed |
 | D19 | The API coalesces the CRC price; it never passes `precio_unitario_crc` through raw | That column is NULL for every CRC purchase by design — 17 272 of 17 645 live rows. A pass-through plus "drop the nulls" would discard 98% of the catalog and fail as silence rather than as an error. A NULL `moneda` (310 rows) is treated as CRC, per Hacienda's own default | 2026-09-02 | Confirmed |
 | D20 | The mapping queue defaults to food categories bought within 180 days (~400 of 1 420 rows), sorted by purchase volume, with bulk confirm on day one | 1 420 rows is not a sitting, and a queue that cannot be drained gets abandoned. Non-food categories (Empaques, Menaje, Limpieza, Higiene, Oficina, Utilidades — 415 products) are never recipe ingredients | 2026-09-02 | Confirmed |
-| D21 | Phase 2 decomposes an all-in menu price with per-plato `lleva_servicio` and `iva_pct`, not a single divisor | Measured against the real sales file: IVA is computed on the subtotal (12.75-12.95%), not on subtotal+servicio (11.95%), and servicio runs 8.1-9.2% of subtotal rather than a flat 10% — so some share of sales carries no servicio at all | 2026-09-02 | Proposed |
+| D21 | Phase 2 strips an all-in menu price with **one constant, `/1.23`** — every price is set as base + 13% IVA + 10% servicio, both on the base | Operator's own pricing rule, verified against 620 days: IVA is exactly 13.00% of `subtotal − descuento` on 617 of them and never above, while IVA ÷ (subtotal + servicio) is 11.86% — so servicio is not in the IVA base and the divisor is 1.23, not 1.243. **Supersedes this row's first draft**, which called for per-plato `lleva_servicio`/`iva_pct` flags: that was inferred from aggregate ratios below 10%/13%, and the gap is the sales mix (takeout carries no servicio), not the pricing rule. Corollary: never apply `/1.23` to aggregate sales — servicio there ranges 6.24-10.00% of subtotal daily; use the file's own `Subtotal − Descuento` | 2026-09-02 | Confirmed (revised same day) |
