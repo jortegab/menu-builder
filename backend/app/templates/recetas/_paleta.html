@@ -6,7 +6,7 @@
     these forms. Drag is the fast way, never the only way. -#}
 <div class="paleta" id="paleta">
 
-  <input class="input paleta__buscar" type="search" name="q" value="{{ paleta_q }}"
+  <input class="input paleta__buscar" id="paleta-q" type="search" name="q" value="{{ paleta_q }}"
          placeholder="Buscar insumo o preparación…"
          hx-get="/recetas/{{ receta.id }}/paleta"
          hx-trigger="keyup changed delay:250ms, search"

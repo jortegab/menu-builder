@@ -1,9 +1,9 @@
 # Menu Builder — Design Plan
 
-**Status:** Phase 1, step 1.6. Steps 1.0-1.5 are built and verified
-against live data (see §11); the builder screen's drag-and-drop and live
-totals are next. Phases 2 and 3 stay outlined deliberately short — they are
-real commitments about *direction*, not finished designs.
+**Status:** Phase 1, step 1.7. Steps 1.0-1.6 are built and verified
+against live data (see §11); `receta_costo_historico` and the
+cost-over-time card are next. Phases 2 and 3 stay outlined deliberately
+short — they are real commitments about *direction*, not finished designs.
 
 **Companion app:** `restaurant-manager`, the same operator's
 e-invoice-driven management suite for the same single restaurant in Costa
@@ -937,7 +937,7 @@ is green.
 | 1.3 | ~~Mapping queue + LLM suggestion + deterministic fallback~~ — **done 2026-09-02** | ✅ the real catalog is drainable into insumos in one sitting |
 | 1.4 | ~~Costing engine wired to real data + "¿Por qué este costo?"~~ — **done 2026-09-02** | ✅ verified: app said ₡4.36/g, hand-computed SQL median said 4.3632 |
 | 1.5 | ~~`receta` / `receta_linea`, preparaciones, cycle guard~~ — **done 2026-09-02**: verified live, a fondo → salsa → plato nest costing ₡790.51 and ₡1 104.48, matching a hand-written SQL median to the céntimo | ✅ a salsa can be built and reused by two platos |
-| 1.6 | The builder screen: drag-drop, live totals, incompleteness | a plate is costed from scratch in under two minutes |
+| 1.6 | ~~The builder screen: drag-drop, live totals, incompleteness~~ — **done 2026-09-02**: htmx and a 150-line vendored drag module, both served from `static/vendor/`; ~270 ms per server render, so a three-line plate is ~2.5 s of machine time and the rest is typing | ✅ a plate is costed from scratch in under two minutes |
 | 1.7 | `receta_costo_historico` + the cost-over-time card | a chart with real daily points |
 
 **Phase 1 is done when** the operator can cost the real menu, and every

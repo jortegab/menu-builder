@@ -148,6 +148,35 @@ class RouteSmokeTest(DbTestCase):
         self.assertIn("«Sal»", r.text)
         self.assertIn("—", r.text)
 
+    def test_los_faltantes_enlazan_al_insumo(self):
+        """Naming the ingredient is half of D10; the next click has to be
+        its own screen, or the operator has to go find it by hand."""
+        r = self.client.get(f"/recetas/{self.plato.id}")
+        self.assertIn(f'<a href="/insumos/{self.sal.id}">«Sal»</a>', r.text)
+
+    def test_el_builder_carga_htmx_y_el_modulo_de_arrastre(self):
+        """Both vendored, never from a CDN: this app has to work with the
+        internet down (D2)."""
+        r = self.client.get(f"/recetas/{self.plato.id}")
+        self.assertIn("/static/vendor/htmx.min.js", r.text)
+        self.assertIn("/static/vendor/dnd.js", r.text)
+        self.assertNotIn("//cdn", r.text)
+        self.assertNotIn("unpkg", r.text)
+
+    def test_toda_linea_tiene_camino_de_teclado(self):
+        """Drag is the fast path, never the only one (PLAN.md §10.1). If a
+        row ever loses its arrows this fails before a keyboard user does."""
+        r = self.client.get(f"/recetas/{self.plato.id}")
+        for etiqueta in ("Subir", "Bajar", "Quitar"):
+            self.assertIn(f'aria-label="{etiqueta} Pechuga deshuesada"', r.text)
+        self.assertIn(">Agregar<", r.text)
+
+    def test_la_paleta_responde_sola_a_la_busqueda(self):
+        r = self.client.get(f"/recetas/{self.plato.id}/paleta?q=sal")
+        self.assertNotIn("<html", r.text)
+        self.assertIn("Sal", r.text)
+        self.assertNotIn("Pechuga deshuesada", r.text)
+
     def test_el_selector_de_unidad_solo_ofrece_la_misma_dimension(self):
         """An incompatible pair has to be unreachable through the UI, not
         merely rejected once it has been chosen (D30)."""

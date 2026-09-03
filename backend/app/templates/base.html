@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Menu Builder{% endblock %}</title>
   <link rel="stylesheet" href="{{ static_url('app.css') }}">
+  {#- Both vendored, never from a CDN: this app runs on the restaurant's
+      own machine and has to work with the internet down (D2). htmx is the
+      same 2.0.4 build restaurant-manager ships, so one stack, one version.
+      `defer` because both only act after the document is parsed. -#}
+  <script src="{{ static_url('vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ static_url('vendor/dnd.js') }}" defer></script>
 </head>
 <body>
   <nav class="rail">

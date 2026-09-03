@@ -23,7 +23,7 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.6.** The catalog mirror, insumo CRUD, the mapping queue,
+**Phase 1, step 1.7.** The catalog mirror, insumo CRUD, the mapping queue,
 the costing engine, and recetas — all wired to real data. A plato costs a
 real number now.
 Screens: `/recetas`, `/recetas/{id}` (the builder), `/preparaciones`,
@@ -173,7 +173,42 @@ Five things to know before touching it:
   pechuga price pechuga once; `insumo_costs.explicar` is several queries
   per insumo and that adds up across a menu.
 
-**Next: step 1.6** — drag-and-drop, htmx live totals, and the palette.
+**Step 1.6 is done too** (2026-09-02): the builder screen at
+`/recetas/{id}` — palette, drag-and-drop, live totals, loud incompleteness.
+`static/vendor/` now holds `htmx.min.js` (2.0.4, the same build upstream
+ships) and `dnd.js` (this app's own, ~150 lines of plain DOM). No npm, no
+CDN, no build step.
+
+- **`dnd.js` moves nothing on its own.** Every drop ends by submitting a
+  form that already exists in the page and that a button already submits:
+  a palette drag submits that item's own «Agregar» form, a reorder
+  submits the hidden `#form-orden`. So drag and keyboard go through the
+  same route, the same validation and the same render — drag is never a
+  second implementation with its own bugs.
+- **Everything is delegated from `document`.** htmx replaces the whole
+  `#receta-cuerpo` on every edit, so listeners bound to rows would stop
+  firing after the first swap.
+- **The quantity inputs carry ids so htmx can put the cursor back.** htmx
+  2.0.4 restores focus and selection by id after a swap; without the id,
+  typing a three-digit quantity loses focus at the first pause.
+  `hx-sync="closest form:replace"` drops the in-flight request when a
+  newer keystroke supersedes it.
+- **`hx-target`/`hx-swap` are inherited, `hx-post` is not.** The form
+  carries the first two; the input, the select and the form each carry
+  their own `hx-post`.
+- **Every htmx-driven route also answers a plain form.** `_responder`
+  returns the fragment when `hx-request` is set and a 303 when it is not,
+  so the screen works with JavaScript off. There is a smoke test for both
+  shapes.
+
+`dnd.js` has **no automated test**, deliberately: testing it needs a DOM,
+a DOM needs npm, and npm is the thing D2 rules out. It was verified against
+the real rendered page in a throwaway jsdom harness (palette drop submits
+the right form; a reorder rewrites `#form-orden`'s id list and submits it;
+a drop outside the receta submits nothing). Re-do that by hand, or in a
+scratch harness, if you change it.
+
+**Next: step 1.7** — `receta_costo_historico` and the cost-over-time card.
 
 
 
@@ -251,6 +286,18 @@ backend/app/
                     `/recetas/{id}`, and `/lineas/orden` before
                     `/lineas/{id}`. Line edits answer with the
                     `_cuerpo.html` fragment for htmx and a 303 without it
+  static/
+    app.css         the palette and every component. No inline hex
+    vendor/         htmx.min.js (2.0.4, same build as upstream) and
+                    dnd.js (this app's own drag module). Vendored, never a
+                    CDN: this runs with the internet down
+  templates/recetas/
+    detail.html     the builder shell: palette left, receta right
+    _cuerpo.html    the lines + totals fragment. Rendered both inside
+                    detail.html and alone as every line edit's answer --
+                    one render path, so a total after a drag cannot be
+                    computed differently from the one on page load (D16)
+    _paleta.html    the palette fragment, swapped by its own search box
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
                     + `override_get_db` for the TestClient smoke tests
 PLAN.md             the design. 31 decisions, 8 non-negotiables
@@ -397,7 +444,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 248 tests today.
+`unittest`, no pytest, matching upstream. 252 tests today.
 
 Coverage is deliberately weighted toward the nasty cases rather than the
 happy path, because the happy path is the one that gets exercised by hand

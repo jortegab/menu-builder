@@ -55,6 +55,11 @@ class Costeo:
     resultado: graph.RecetaCosteada | None = None
     error: str | None = None
     costos_insumo: dict[int, CostResult] = field(default_factory=dict)
+    # {nombre: insumo_id} for every insumo reachable from this receta that
+    # has no usable price. `graph.py` reports the names -- it never saw an
+    # id -- and the banner has to *link* to each one, because "Sal has no
+    # price" is only actionable if the next click is Sal's own screen.
+    faltantes_ids: dict[str, int] = field(default_factory=dict)
 
     @property
     def estado(self) -> str:
@@ -215,6 +220,9 @@ def costear(
         receta=receta,
         resultado=resultado,
         costos_insumo={i: cache[i] for i in ids if i in cache},
+        faltantes_ids={
+            i.nombre: i.id for i in insumos.values() if i.costo.valor is None
+        },
     )
 
 

@@ -12,7 +12,7 @@ historial de compras real, con descuentos, sin IVA, convertido a colones
 cuando la factura vino en dólares. Este app no vuelve a calcular nada de
 eso: lo lee.
 
-> **Estado: fase 1, paso 1.6.** Ya funciona todo lo que va desde la
+> **Estado: fase 1, paso 1.7.** Ya funciona todo lo que va desde la
 > factura hasta el costo de un plato:
 >
 > - El catálogo de `restaurant-manager` se trae completo y se mantiene al
@@ -27,10 +27,11 @@ eso: lo lee.
 >   dentro de una salsa dentro de un plato — tres niveles, que es
 >   exactamente lo que anida esta cocina — da ₡790,51 el plato, y la misma
 >   cuenta hecha a mano en SQL da lo mismo al céntimo.
+> - **El constructor**: se arrastra de la lista a la receta, se cambia un
+>   número y el total se mueve solo. Sin npm y sin CDN — funciona con el
+>   internet caído.
 >
-> **Lo que todavía no existe:** arrastrar y soltar en el constructor, el
-> total que se mueve solo mientras se escribe, y el histórico de costo del
-> plato. Las recetas se arman igual, con botones y recarga de página. Ver
+> **Lo que todavía no existe es el histórico del costo del plato.** Ver
 > «Qué falta».
 
 ---
@@ -172,10 +173,9 @@ declara porciones.
 
 ## Qué hace y qué va a hacer (fase 1)
 
-> **Insumos, Mapeo, el costeo y las recetas ya están construidos y
-> corriendo contra datos reales.** De esta sección, lo único que todavía no
-> existe es **arrastrar y soltar**, el total que se mueve mientras se
-> escribe, y el **histórico** del costo del plato.
+> **Insumos, Mapeo, el costeo, las recetas y el constructor ya están
+> construidos y corriendo contra datos reales.** De esta sección, lo único
+> que todavía no existe es el **histórico** del costo del plato.
 
 ### Insumos
 
@@ -222,17 +222,25 @@ texto: más tosca, pero nunca se queda en blanco.
 
 La pantalla para la que existe todo lo demás.
 
-A la izquierda un buscador con los insumos y las preparaciones; a la
-derecha, la receta. Cada línea tiene su cantidad y un selector de unidad
-**que solo ofrece unidades compatibles**: una pechuga que se costea en
-gramos se puede pedir en kg, g o lb, y ml ni siquiera aparece. Cada línea
-muestra cuánto cuesta y qué porcentaje del plato representa, porque «qué es
-lo caro acá» es la pregunta de esa pantalla. Una preparación se abre en el
-mismo lugar para ver su desglose.
+A la izquierda un buscador con los insumos y las preparaciones. **Se
+arrastran** a la receta, o se agregan con un botón; las líneas se
+reordenan arrastrándolas, o con las flechas — **arrastrar es el camino
+rápido, nunca el único.** Cada línea tiene su cantidad y un selector de
+unidad **que solo ofrece unidades compatibles**: una pechuga que se costea
+en gramos se puede pedir en kg, g o lb, y ml ni siquiera aparece. Se cambia
+un número y **el costo se mueve solo**: el de la línea, el total y el de la
+porción.
 
-*(Arrastrar y soltar, y el total que se mueve mientras se escribe, son el
-paso 1.6 — todavía no. Hoy se agrega con el botón «Agregar», se reordena
-con las flechas y la página se recarga.)*
+Cada línea muestra cuánto cuesta y qué porcentaje del plato representa,
+porque «qué es lo caro acá» es la pregunta de esa pantalla. Una preparación
+se abre en el mismo lugar para ver su desglose.
+
+Ese total lo calcula **el servidor**, siempre, y por eso el arrastre y el
+botón dan exactamente el mismo resultado: hay un solo motor de costeo, en
+Python, y ninguna copia de esa cuenta en el navegador. Lo que sí corre en
+el navegador son 150 líneas de arrastre, guardadas dentro del repo — sin
+npm, sin CDN, sin paso de compilación. El día que se caiga el internet, el
+constructor sigue funcionando.
 
 Si a algún ingrediente le falta precio, el total **no se muestra**. Ni
 gris, ni parcial, ni aproximado: un guion, un aviso, y el nombre del
@@ -262,8 +270,8 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
 
 ## Qué falta
 
-De la fase 1 quedan dos cosas: **arrastrar y soltar con el total en vivo**
-(paso 1.6) y el **histórico de costo del plato** (paso 1.7).
+De la fase 1 queda una cosa: el **histórico de costo del plato** (paso
+1.7).
 
 Lo que sí está, hoy:
 
@@ -274,9 +282,10 @@ Lo que sí está, hoy:
 - **La sincronización del catálogo**, funcionando contra el app real: 1 420
   productos y 17 645 compras en 46 segundos, y unos 2 segundos cuando solo
   trae lo que cambió. Se maneja desde Ajustes.
-- **Insumos, mapeo, costeo y recetas**, todo contra datos reales.
+- **Insumos, mapeo, costeo, recetas y el constructor**, todo contra datos
+  reales.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 248
+  el recorrido del grafo de recetas y la detección de ciclos — con 252
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
   una salsa que se contiene a sí misma, unidades incompatibles, y un
   anidamiento que se pasa del tope por los dos lados a la vez).
