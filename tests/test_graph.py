@@ -95,19 +95,18 @@ class TestRecipeChoosesTheUnit(unittest.TestCase):
         }
         return cost_recipe(1, recetas, insumos).costo_total
 
-    def test_a_ml_insumo_can_be_used_in_l_ml_and_floz(self):
-        # CRC 2 per ml.
+    def test_a_ml_insumo_can_be_used_in_l_ml_and_oz(self):
+        # CRC 2 per ml. "oz" is a fluid ounce: 6 oz = 177.44 ml.
         self.assertEqual(self.plato(1, "l", "ml", "2"), Decimal("2000.00"))
         self.assertEqual(self.plato(500, "ml", "ml", "2"), Decimal("1000.00"))
-        # 6 fl oz = 177.44 ml -> CRC 354.88
-        self.assertEqual(self.plato(6, "floz", "ml", "2"), Decimal("354.88"))
+        self.assertEqual(self.plato(6, "oz", "ml", "2"), Decimal("354.88"))
 
-    def test_a_g_insumo_can_be_used_in_kg_g_lb_and_oz(self):
-        # CRC 4 per g.
+    def test_a_g_insumo_can_be_used_in_kg_g_and_lb(self):
+        # CRC 4 per g. No ounces here: solids are measured in grams, and
+        # "oz" means a fluid ounce in this app.
         self.assertEqual(self.plato("0.18", "kg", "g", "4"), Decimal("720.00"))
         self.assertEqual(self.plato(180, "g", "g", "4"), Decimal("720.00"))
         self.assertEqual(self.plato(1, "lb", "g", "4"), Decimal("1814.37"))
-        self.assertEqual(self.plato(8, "oz", "g", "4"), Decimal("907.18"))
 
     def test_the_same_insumo_in_two_units_in_one_recipe(self):
         # Nothing stops a recipe using kg on one line and g on another;
@@ -122,10 +121,10 @@ class TestRecipeChoosesTheUnit(unittest.TestCase):
         self.assertEqual(cost_recipe(1, recetas, insumos).costo_total, Decimal("2500.00"))
 
     def test_a_volume_unit_on_a_mass_insumo_is_still_refused(self):
-        # Free choice within the dimension; never across it. "6 floz de
+        # Free choice within the dimension; never across it. "6 oz de
         # harina" needs a density, which non-negotiable #6 refuses to invent.
         with self.assertRaises(IncompatibleUnits):
-            self.plato(6, "floz", "g", "4")
+            self.plato(6, "oz", "g", "4")
 
 
 class TestRecipeCost(unittest.TestCase):

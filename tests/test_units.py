@@ -66,24 +66,30 @@ class TestHelpers(unittest.TestCase):
         # "Gal"). The assertion is exact rather than a subset check: this is
         # the list the recipe builder's unit selector offers, and a unit
         # silently appearing or disappearing from it is worth failing on.
-        self.assertEqual(set(compatible_units("g")), {"mg", "g", "kg", "oz", "lb"})
-        self.assertEqual(set(compatible_units("l")), {"ml", "l", "gal", "floz"})
+        self.assertEqual(set(compatible_units("g")), {"mg", "g", "kg", "lb"})
+        self.assertEqual(set(compatible_units("l")), {"ml", "l", "gal", "oz"})
         self.assertEqual(compatible_units("unidad"), ["unidad"])
 
-    def test_imperial_and_gallon_convert_correctly(self):
+    def test_pounds_and_gallons_convert_correctly(self):
         self.assertEqual(convert(Decimal(1), "lb", "g"), Decimal("453.59237"))
-        self.assertEqual(convert(Decimal(16), "oz", "g"), Decimal("453.592370000"))
         self.assertEqual(convert(Decimal(1), "gal", "l"), Decimal("3.785411784"))
 
-    def test_fluid_ounces_are_a_volume_and_ounces_are_a_mass(self):
-        # Not interchangeable, and not close in the way that matters: a
-        # fluid ounce is 29.57 ml, an ounce is 28.35 g. Folding them into
-        # one unit would make "6 oz de aceite" silently mean a mass.
-        self.assertEqual(dimension_of("floz"), "volumen")
-        self.assertEqual(dimension_of("oz"), "masa")
-        self.assertEqual(convert(Decimal(1), "floz", "ml"), Decimal("29.5735295625"))
+    def test_oz_means_a_fluid_ounce_and_nothing_else(self):
+        # The operator's rule: the kitchen says "oz" for liquids and grams
+        # for everything solid, so there is exactly one thing "oz" can mean
+        # here. A mass ounce was modelled briefly and removed -- two
+        # meanings behind one label is a believable number waiting to be
+        # wrong by the dimension.
+        self.assertEqual(dimension_of("oz"), "volumen")
+        self.assertEqual(convert(Decimal(1), "oz", "ml"), Decimal("29.5735295625"))
         with self.assertRaises(IncompatibleUnits):
-            convert(Decimal(6), "floz", "g")
+            convert(Decimal(6), "oz", "g")
+
+    def test_every_spelling_of_an_ounce_is_the_same_unit(self):
+        # So "16 FL OZ" and "16OZ" agree rather than landing on different
+        # dimensions.
+        for spelling in ("oz", "OZ", "ozs", "floz", "FLOZ", "fl", "onza", "onzas", "onzaliquida"):
+            self.assertEqual(normalize_unit(spelling), "oz", spelling)
 
     def test_to_canonical(self):
         self.assertEqual(to_canonical(Decimal(2), "kg"), (Decimal(2000), "g"))

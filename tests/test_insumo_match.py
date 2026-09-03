@@ -148,9 +148,26 @@ class TestResolveFactor(unittest.TestCase):
         self.assertIsNone(factor)
         self.assertEqual(origen, "sin_resolver")
 
-    def test_ounces_convert(self):
-        factor, _ = m.resolve_factor(descripcion="ALCAPARRAS 1/16OZ", unidad_base="g")
-        self.assertEqual(factor, Decimal("28.349523125") * 16)
+    def test_ounces_are_volume(self):
+        # "oz" is a fluid ounce in this app, so a 16 oz jar resolves against
+        # a millilitre-based insumo -- 16 x 29.5735 ml.
+        factor, origen = m.resolve_factor(descripcion="ALCAPARRAS 1/16OZ", unidad_base="ml")
+        self.assertEqual(factor, Decimal("29.5735295625") * 16)
+        self.assertEqual(origen, "descripcion")
+
+    def test_an_oz_pack_size_does_not_resolve_against_a_gram_insumo(self):
+        # Same refusal as any other mass/volume crossing: it means the
+        # insumo's base unit is probably wrong, which is a person's call.
+        factor, origen = m.resolve_factor(descripcion="ALCAPARRAS 1/16OZ", unidad_base="g")
+        self.assertIsNone(factor)
+        self.assertEqual(origen, "sin_resolver")
+
+    def test_pounds_still_parse_for_solid_pack_sizes(self):
+        # lb is kept for the parser even though recipes measure solids in
+        # grams: real descriptions say "CHURROS AVIKO 4/2.2 LBS".
+        factor, origen = m.resolve_factor(descripcion="CHURROS AVIKO 4/2.2 LBS", unidad_base="g")
+        self.assertEqual(factor, Decimal("453.59237") * Decimal("8.8"))
+        self.assertEqual(origen, "descripcion")
 
 
 class TestTokens(unittest.TestCase):

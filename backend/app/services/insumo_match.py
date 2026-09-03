@@ -63,7 +63,8 @@ _UNIDADES_TEXTO = "|".join(
     sorted(
         (
             "kgs", "kg", "gramos", "gramo", "grs", "gr", "g",
-            "libras", "libra", "lbs", "lb", "onzas", "onza", "ozs", "oz",
+            "libras", "libra", "lbs", "lb",
+            "flozs", "floz", "onzas", "onza", "ozs", "oz",
             "mililitros", "mililitro", "mls", "ml",
             "litros", "litro", "lts", "lt", "l",
             "galones", "galon", "gln", "gal", "gl",

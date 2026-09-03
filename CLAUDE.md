@@ -306,9 +306,12 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
   different units for the same insumo. Do not "simplify" this by forcing
   recipe lines into the base unit; that was the original design and it was
   wrong.
-- **`oz` is mass, `floz` is volume** (D31). Never fold them together: a
-  fluid ounce is 29.57 ml and an ounce is 28.35 g, so "6 oz de aceite"
-  would silently become a mass costed against a volume insumo.
+- **`oz` means a fluid ounce, always** (D31). There is no mass ounce in
+  this app — solids are grams. Do not add one back "for completeness": a
+  first draft had both, and it forced every screen showing "oz" to say
+  which one, while leaving "6 oz de aceite" able to land on either.
+  `lb` exists only so the *parser* can read `4/2.2 LBS` off a real
+  description; recipes do not offer it for anything but mass.
 - **Merma and rendimiento are different losses and must never be applied to
   the same one.** Merma is loss on the purchased insumo *before* it enters
   a recipe (bone, trim, peel). Rendimiento is what a recipe *produces* from
@@ -349,7 +352,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 180 tests today, mostly against the
+`unittest`, no pytest, matching upstream. 183 tests today, mostly against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the

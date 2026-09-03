@@ -441,19 +441,35 @@ Three dimensions, and conversion happens **only within one**:
 
 | dimension | canonical | accepted |
 |---|---|---|
-| masa | `g` | `mg`, `g`, `kg`, `oz`, `lb` |
-| volumen | `ml` | `ml`, `l`, `gal`, `floz` |
+| masa | `g` | `mg`, `g`, `kg`, `lb` |
+| volumen | `ml` | `ml`, `l`, `gal`, `oz` |
 | conteo | `unidad` | `unidad` |
 
 `unidad` converts to nothing. A recipe line whose unit is not compatible
 with its component's own unit is a **validation error at save time**, not a
 silent coercion — and the error names both units.
 
-**`oz` is mass and `floz` is volume, and they are separate units on
-purpose.** A fluid ounce is 29.57 ml; an ounce is 28.35 g. Folding them
-into one "oz" would make *6 oz de aceite* silently mean a mass, cost it
-against a volume-based insumo, and be wrong twice — once by ~4%, and once
-by the whole density question non-negotiable #6 exists to refuse.
+**`oz` means a fluid ounce, and only ever a volume** (D31). The kitchen
+says "oz" for liquids and grams for everything solid, so there is exactly
+one thing "oz" can mean here — the screens show a plain "oz" and it never
+needs a qualifier.
+
+A mass ounce was modelled briefly and removed. Keeping both meant every
+screen showing "oz" had to say *which* oz, and a line reading *6 oz de
+aceite* could land on either — a believable number wrong by the whole
+dimension. One meaning, chosen deliberately, beats two meanings and a
+label.
+
+The real catalog agrees: of the 41 products whose description carries a
+readable `OZ` pack size, every food one is a liquid — `ALCAPARRAS
+IMPORTADAS 1/16OZ` (473 ml of brine), `SALSA CARAMELO LYONS 1/17 OZ`,
+`CREMA DE COCO LOPEZ 1/15 OZ`. The rest are cup and lid capacities, which
+are fluid ounces too.
+
+**`lb` stays, for the parser only.** Recipes measure solids in grams, but
+descriptions say `CHURROS AVIKO 4/2.2 LBS` and `PAPA GAJO 6/5LB`, and a
+pack size this app cannot read is a conversion factor the operator has to
+type by hand.
 
 ### 7.1.1 The unit belongs to the recipe line, not to the insumo (D30)
 
@@ -1314,5 +1330,5 @@ archaeology problem.
 | D28 | Auth ships **in the same commit** as the `0.0.0.0` bind, never after | Today the only thing protecting either app is being unreachable from the network. The bind change is what turns "no auth" from a simplification into an open door onto the restaurant's LAN, so the two are one change | 2026-09-02 | Confirmed |
 | D29 | Leave room for an actor now: never collapse "a human did this" into a boolean | The only free precaution multi-user needs in Phase 1. Adding a nullable `..._by_user_id` later is a column and a `NULL` backfill; recovering *who* from a design that stored only `True` is archaeology | 2026-09-02 | Confirmed |
 | D30 | An insumo is **costed** in a canonical base unit (`g`/`ml`/`unidad`), and the **recipe line chooses its own unit** and converts | A cost has to be per something, and per-gram never needs a fraction — but nothing about that should force a recipe to write grams. An aceite costed per ml can be called for in L, ml or fl oz; a pechuga costed per gram in kg, g, lb or oz, and two lines of one recipe may differ. Freedom within the dimension only: crossing mass and volume still needs a density (non-negotiable #6). Supersedes the original `Insumo.unidad_uso` framing, which read as "the unit the kitchen must measure in" — the storage was always canonical, but the name promised something about recipes that the costing engine never imposed. Renamed `unidad_base`, live column altered by hand (no Alembic, D15) | 2026-09-02 | Confirmed |
-| D31 | `oz` (mass, 28.35 g) and `floz` (volume, 29.57 ml) are separate units | Folding them would make "6 oz de aceite" silently mean a mass, cost it against a volume-based insumo, and be wrong both by ~4% and by the dimension. The catalog already uses both senses | 2026-09-02 | Confirmed |
+| D31 | **`oz` means a fluid ounce (29.57 ml) and nothing else.** There is no mass ounce; solids are measured in grams. `lb` is kept for the *parser* only | Operator's rule: the kitchen says "oz" for liquids and grams for everything solid, so one meaning is enough and the screens can show a bare "oz" with no qualifier. A first draft carried both `oz` (mass) and `floz` (volume) — that forced every screen to say *which* ounce, and left "6 oz de aceite" able to land on either, a believable figure wrong by the whole dimension. Borne out by the catalog: of 41 products with a readable OZ pack size, every food one is a liquid. Pounds still parse because real descriptions say `4/2.2 LBS` | 2026-09-02 | Confirmed (revised same day) |
 | D21 | Phase 2 strips an all-in menu price with **one constant, `/1.23`** — every price is set as base + 13% IVA + 10% servicio, both on the base | Operator's own pricing rule, verified against 620 days: IVA is exactly 13.00% of `subtotal − descuento` on 617 of them and never above, while IVA ÷ (subtotal + servicio) is 11.86% — so servicio is not in the IVA base and the divisor is 1.23, not 1.243. **Supersedes this row's first draft**, which called for per-plato `lleva_servicio`/`iva_pct` flags: that was inferred from aggregate ratios below 10%/13%, and the gap is the sales mix (takeout carries no servicio), not the pricing rule. Corollary: never apply `/1.23` to aggregate sales — servicio there ranges 6.24-10.00% of subtotal daily; use the file's own `Subtotal − Descuento` | 2026-09-02 | Confirmed (revised same day) |

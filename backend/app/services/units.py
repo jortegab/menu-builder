@@ -32,8 +32,10 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     "mg": (MASA, Decimal("0.001")),
     "g": (MASA, Decimal(1)),
     "kg": (MASA, Decimal(1000)),
-    # Imperial mass shows up on imported goods ("ALCAPARRAS 1/16OZ").
-    "oz": (MASA, Decimal("28.349523125")),
+    # Pounds are here for the *parser*, not for recipes: real descriptions
+    # say "CHURROS AVIKO 4/2.2 LBS" and "PAPA GAJO 6/5LB", and a pack size
+    # this app cannot read is a conversion factor the operator has to type
+    # by hand. Solids are measured in grams everywhere else.
     "lb": (MASA, Decimal("453.59237")),
     "ml": (VOLUMEN, Decimal(1)),
     "l": (VOLUMEN, Decimal(1000)),
@@ -42,14 +44,17 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     # supplies but also cooking oil, which is an insumo. Exactly the kind
     # of addition PLAN.md §15 calls a cheap door: this table is a table.
     "gal": (VOLUMEN, Decimal("3785.411784")),
-    # US fluid ounce -- a *volume*, and deliberately a different unit from
-    # the mass `oz` above. They are not interchangeable and they are not
-    # even close in the way that matters: 1 fl oz of water is 29.57 ml and
-    # weighs 29.57 g, while 1 oz is 28.35 g. Folding them into one unit
-    # would make "6 oz de aceite" silently mean a mass, cost it against a
-    # volume-based insumo, and be wrong twice over -- once by ~4% and once
-    # by the whole density question non-negotiable #6 exists to refuse.
-    "floz": (VOLUMEN, Decimal("29.5735295625")),
+    # **In this app "oz" means a FLUID ounce, and only ever a volume**
+    # (D31, revised 2026-09-02 by the operator). The kitchen says "oz" for
+    # liquids and grams for everything solid, so there is exactly one thing
+    # "oz" can mean here and no ambiguity to resolve at the point of use.
+    #
+    # The mass ounce was modelled briefly and then removed: keeping both
+    # meant every screen showing "oz" had to say *which* oz, and a line
+    # reading "6 oz de aceite" could land on either -- a believable number
+    # that is wrong by the dimension. One meaning, chosen deliberately,
+    # beats two meanings and a label.
+    "oz": (VOLUMEN, Decimal("29.5735295625")),
     "unidad": (CONTEO, Decimal(1)),
 }
 
@@ -104,19 +109,18 @@ def normalize_unit(unit: str) -> str:
         "und": "unidad",
         "uds": "unidad",
         "u": "unidad",
+        # Every spelling of an ounce folds to the one `oz`, which is a
+        # volume here -- including the explicitly-fluid ones, so a
+        # description written "16 FL OZ" and one written "16OZ" agree.
         "onza": "oz",
         "onzas": "oz",
         "ozs": "oz",
-        # Fluid ounces, spelled the several ways a kitchen writes them.
-        # "oz" alone stays *mass*: it is the commoner meaning on an invoice,
-        # and a line that means the volume has to say so.
-        "floz": "floz",
-        "flozs": "floz",
-        "fl": "floz",
-        "onzafluida": "floz",
-        "onzalicuida": "floz",
-        "onzaliquida": "floz",
-        "onzasliquidas": "floz",
+        "floz": "oz",
+        "flozs": "oz",
+        "fl": "oz",
+        "onzafluida": "oz",
+        "onzaliquida": "oz",
+        "onzasliquidas": "oz",
         "libra": "lb",
         "libras": "lb",
         "lbs": "lb",

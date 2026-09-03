@@ -93,11 +93,10 @@ UNIDAD_NOMBRES = {
     "mg": "mg",
     "g": "g",
     "kg": "kg",
-    "oz": "oz (peso)",
     "lb": "lb",
     "ml": "ml",
     "l": "L",
-    "floz": "oz líquidas",
+    "oz": "oz",
     "gal": "galones",
     "unidad": "unidades",
 }
