@@ -1,17 +1,97 @@
 {% extends "base.html" %}
-{% set seccion = 'recetas' %}
-{% block title %}Menú · Menu Builder{% endblock %}
-{% block heading %}Menú{% endblock %}
+{% set es_plato = tipo == 'plato' %}
+{% set seccion = 'recetas' if es_plato else 'preparaciones' %}
+{% set raiz = '/recetas' if es_plato else '/preparaciones' %}
+{% block title %}{{ 'Menú' if es_plato else 'Preparaciones' }} · Menu Builder{% endblock %}
+{% block heading %}{{ 'Menú' if es_plato else 'Preparaciones' }}{% endblock %}
 {% block content %}
+
+<div class="toolbar">
+  <form class="toolbar__filters" method="get" action="{{ raiz }}">
+    <input class="input" type="search" name="q" value="{{ q }}"
+           placeholder="{{ 'Buscar plato…' if es_plato else 'Buscar preparación…' }}">
+    <select class="input" name="estado" onchange="this.form.submit()">
+      <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activas</option>
+      <option value="archivados" {% if estado == 'archivados' %}selected{% endif %}>Archivadas</option>
+      <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todas</option>
+    </select>
+    <button class="btn btn--ghost" type="submit">Buscar</button>
+  </form>
+  <a class="btn" href="/recetas/nueva?tipo={{ tipo }}">
+    {{ 'Nuevo plato' if es_plato else 'Nueva preparación' }}
+  </a>
+</div>
+
 <div class="card">
   {% if recetas %}
-    {# Phase 1.5 -- the plato list with cost per portion and estado. #}
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>{{ 'Plato' if es_plato else 'Preparación' }}</th>
+        <th class="num">Líneas</th>
+        {% if es_plato %}<th class="num">Porciones</th>{% else %}<th class="num">Rinde</th>{% endif %}
+        <th class="num">Costo total</th>
+        <th class="num">{{ 'Por porción' if es_plato else 'Por unidad' }}</th>
+        {% if not es_plato %}<th class="num">Usada en</th>{% endif %}
+        <th>Estado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in recetas %}
+      {% set c = costeos.get(r.id) %}
+      <tr class="row-link" onclick="location.href='/recetas/{{ r.id }}'">
+        <td>
+          <strong>{{ r.nombre }}</strong>
+          {% if not r.activo %}<span class="pip">Archivada</span>{% endif %}
+          {% if r.categoria_menu %}<div class="muted small">{{ r.categoria_menu }}</div>{% endif %}
+        </td>
+        <td class="num">{{ r.lineas | length }}</td>
+        {% if es_plato %}
+          <td class="num">{{ r.porciones }}</td>
+        {% else %}
+          <td class="num">{{ r.rendimiento_cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(r.rendimiento_unidad, r.rendimiento_unidad) }}</td>
+        {% endif %}
+        <td class="num">{{ c.costo_total | money if c else '—' }}</td>
+        <td class="num">
+          {% if es_plato %}
+            {{ c.costo_por_porcion | money if c else '—' }}
+          {% elif c and c.costo_por_unidad_rendimiento is not none %}
+            {{ c.costo_por_unidad_rendimiento | money }}<span class="muted small">/{{ r.rendimiento_unidad }}</span>
+          {% else %}—{% endif %}
+        </td>
+        {% if not es_plato %}<td class="num">{{ usos.get(r.id, 0) }}</td>{% endif %}
+        <td>
+          {% if c and c.estado == 'error' %}<span class="pip pip--alert">revisar</span>
+          {% elif not r.lineas %}<span class="pip">vacía</span>
+          {% elif c and c.estado == 'incompleto' %}<span class="pip pip--warn">incompleta</span>
+          {% else %}<span class="pip pip--ok">completa</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">
+    Un costo en <strong>—</strong> es una receta incompleta: algún ingrediente
+    no tiene precio todavía. Nunca se muestra una suma parcial, porque un
+    número en pantalla es un número que alguien va a usar.
+  </p>
   {% else %}
-    <p class="empty">Todavía no hay recetas.</p>
+    <p class="empty">
+      {% if q %}Nada coincide con «{{ q }}».
+      {% elif es_plato %}Todavía no hay platos.
+      {% else %}Todavía no hay preparaciones.{% endif %}
+    </p>
     <p class="empty__hint">
-      Empezá conectando el catálogo de restaurant-manager desde Ajustes y
-      mapeando los primeros insumos. Ver <code>PLAN.md</code> §11, fase 1.
+      {% if es_plato %}
+        Un plato es lo que sale del menú y se cobra: lleva porciones y se
+        arma con insumos y preparaciones.
+      {% else %}
+        Una preparación es lo que la cocina hace en casa y otras recetas
+        usan como ingrediente — una salsa, un fondo, una marinada. Declara
+        cuánto rinde, y eso es lo que permite pedirla por gramo.
+      {% endif %}
     </p>
   {% endif %}
 </div>
+
 {% endblock %}

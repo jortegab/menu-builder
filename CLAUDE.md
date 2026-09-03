@@ -23,10 +23,11 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.5.** The catalog mirror, insumo CRUD, the mapping queue
-and the costing engine — pure *and* wired to real data. Insumos cost real
-numbers now; recipes do not exist yet.
-Screens: `/insumos`, `/insumos/mapeo`, `/ajustes`, plus a stub `/recetas`.
+**Phase 1, step 1.6.** The catalog mirror, insumo CRUD, the mapping queue,
+the costing engine, and recetas — all wired to real data. A plato costs a
+real number now.
+Screens: `/recetas`, `/recetas/{id}` (the builder), `/preparaciones`,
+`/insumos`, `/insumos/mapeo`, `/ajustes`.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
 `/api/v1` — six read-only GET endpoints over the catalog and price history,
@@ -136,9 +137,43 @@ Verified against live data end to end: the app rendered ₡4.36/g for an
 insumo fed by four suppliers, and the hand-written SQL median over the same
 23 in-window observations returned 4.3632.
 
-**Next: step 1.5** — `receta`/`receta_linea`, preparaciones, and the cycle
-guard on write. `graph.py` already has the traversal and cycle detection,
-unused so far.
+**Step 1.5 is done too** (2026-09-02): recetas, preparaciones, and the
+guards that run before a line is written. `services/recetas.py` owns the
+writing, `services/receta_costs.py` bridges the DB to `graph.py`, which was
+written in Phase 0 and is now actually used.
+
+Verified live on a three-level nest — **fondo oscuro → salsa criolla →
+plato**, exactly the depth Q4 said the kitchen reaches. The salsa is reused
+by two platos, and the app's ₡790.51 and ₡1 104.48 match a hand-written SQL
+median over the same observations to the céntimo.
+
+Five things to know before touching it:
+
+- **Four things are refused at write time, each naming the offender.** A
+  cycle (with its path spelled out — "Salsa criolla → Fondo oscuro → Salsa
+  criolla"); a nest past `MAX_DEPTH`; a *plato* used as an ingredient (it
+  declares portions, not a yield, so there is no per-gram for a line to
+  multiply by); and a unit in the wrong dimension. Each of the last three
+  would otherwise surface as a line that silently has no cost.
+- **The depth guard counts both ends of the new edge.**
+  `graph.depth_through_edge` = `height_above(padre) + 1 + depth_below(hijo)`.
+  A two-level salsa dropped under a plato already two levels down is what
+  overflows; neither half looks deep alone.
+- **Two edits to a preparación in use are refused, not cascaded**: turning
+  it into a plato (its consumers would silently go `incompleto`), and
+  changing its yield to another *dimension* (their lines would stop
+  converting). Both messages name the recipes to fix. Changing the yield
+  *quantity* is free and re-costs everything, which is O4.
+- **`receta_costs.costear` never raises.** A cycle that survived the write
+  guard, a nest too deep, an incompatible unit — all three land as
+  `Costeo.error`, a third state beside `completo`/`incompleto`, because
+  they are *data* errors and send the operator somewhere different. One bad
+  receta must not 500 the whole menu list.
+- **`costear_muchas` shares one insumo-cost cache.** Nine plates using
+  pechuga price pechuga once; `insumo_costs.explicar` is several queries
+  per insumo and that adds up across a menu.
+
+**Next: step 1.6** — drag-and-drop, htmx live totals, and the palette.
 
 
 
@@ -198,7 +233,12 @@ backend/app/
     catalog_sync.py    fills the mirror. Idempotent; never raises for
                     anything upstream does
     graph.py        recipe DAG: cycle detection, depth-limited traversal,
-                    cost aggregation. Pure
+                    cost aggregation, and the write-time depth guard
+                    (`depth_through_edge`). Pure
+    recetas.py      receta + receta_linea master data. Owns the four
+                    write-time refusals; imports graph.py for two of them
+    receta_costs.py the DB -> graph.py bridge. `Costeo` carries a third
+                    state, `error`, so a bad row is legible instead of a 500
   routers/
     ajustes.py      /ajustes: the sync panel. Sync runs synchronously in
                     the request -- deliberate for a local single-operator
@@ -206,8 +246,13 @@ backend/app/
     insumos.py      /insumos: list, create, edit, archive
     mapeo.py        /insumos/mapeo. Registered BEFORE insumos.py or
                     /insumos/{insumo_id} captures it and 422s
-    recetas.py      Phase 0 stub
+    recetas.py      /recetas, /preparaciones, and the builder. Route
+                    order matters twice here: `/recetas/nueva` before
+                    `/recetas/{id}`, and `/lineas/orden` before
+                    `/lineas/{id}`. Line edits answer with the
+                    `_cuerpo.html` fragment for htmx and a 303 without it
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
+                    + `override_get_db` for the TestClient smoke tests
 PLAN.md             the design. 31 decisions, 8 non-negotiables
 ```
 
@@ -352,8 +397,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 183 tests today, mostly against the
-three pure modules.
+`unittest`, no pytest, matching upstream. 248 tests today.
 
 Coverage is deliberately weighted toward the nasty cases rather than the
 happy path, because the happy path is the one that gets exercised by hand
@@ -362,8 +406,16 @@ boundary, a diamond that is not a cycle, a cycle that survived to read
 time, a depth-limit overflow, mixed units in one recipe, and
 incompleteness propagating up through a nested preparación.
 
-When DB-touching code arrives, add a `tests/dbcase.py` harness like
-upstream's rather than mocking the session.
+DB-touching tests use the `tests/dbcase.py` SQLite harness rather than
+mocking the session.
+
+**`tests/test_routes_smoke.py` is the one that catches what unit tests
+structurally cannot** — a template reading a context key the router stopped
+passing, a filter that moved, a route order that got shuffled. Every one of
+those is a 500 on a daily page. Ported from upstream's own smoke test, with
+its `override_get_db` (which must publish the Session on `request.state.db`,
+or the nav rail's badge silently exercises a fallback production never
+takes). Add a URL to `paginas` whenever a screen is added.
 
 ---
 

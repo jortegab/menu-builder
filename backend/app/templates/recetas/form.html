@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% set editando = receta is not none %}
+{% set tipo = valores.tipo or 'plato' %}
+{% set seccion = 'recetas' if tipo == 'plato' else 'preparaciones' %}
+{% block title %}{{ 'Editar receta' if editando else 'Nueva receta' }} · Menu Builder{% endblock %}
+{% block heading %}
+  {% if editando %}Editar {{ receta.nombre }}
+  {% elif tipo == 'plato' %}Nuevo plato
+  {% else %}Nueva preparación{% endif %}
+{% endblock %}
+{% block content %}
+
+<form class="card form" method="post"
+      action="{{ '/recetas/' ~ receta.id if editando else '/recetas' }}">
+
+  <div class="field">
+    <label>Tipo</label>
+    <div class="radios">
+      <label class="check">
+        <input type="radio" name="tipo" value="plato" {% if tipo == 'plato' %}checked{% endif %}
+               onchange="this.form.querySelectorAll('[data-solo]').forEach(function(e){e.hidden = e.dataset.solo !== 'plato';})">
+        Plato — sale al menú, se cobra por porción
+      </label>
+      <label class="check">
+        <input type="radio" name="tipo" value="preparacion" {% if tipo == 'preparacion' %}checked{% endif %}
+               onchange="this.form.querySelectorAll('[data-solo]').forEach(function(e){e.hidden = e.dataset.solo !== 'preparacion';})">
+        Preparación — la usan otras recetas como ingrediente
+      </label>
+    </div>
+    {% if errors.tipo %}<p class="field__error">{{ errors.tipo }}</p>{% endif %}
+  </div>
+
+  <div class="field">
+    <label for="nombre">Nombre</label>
+    <input class="input {% if errors.nombre %}input--bad{% endif %}" id="nombre" name="nombre"
+           value="{{ valores.nombre or '' }}" autofocus
+           placeholder="{{ 'Pollo a la plancha' if tipo == 'plato' else 'Salsa criolla' }}">
+    {% if errors.nombre %}<p class="field__error">{{ errors.nombre }}</p>{% endif %}
+  </div>
+
+  <div class="field" data-solo="plato" {% if tipo != 'plato' %}hidden{% endif %}>
+    <label for="porciones">Porciones</label>
+    <input class="input input--sm {% if errors.porciones %}input--bad{% endif %}"
+           id="porciones" name="porciones" value="{{ valores.porciones or '' }}" inputmode="numeric">
+    {% if errors.porciones %}<p class="field__error">{{ errors.porciones }}</p>{% endif %}
+    <p class="field__hint">
+      Cuántos platos salen de esta receta. El costo total se divide entre
+      ellas para dar el costo por porción.
+    </p>
+  </div>
+
+  <div class="field" data-solo="preparacion" {% if tipo != 'preparacion' %}hidden{% endif %}>
+    <label for="rendimiento_cantidad">Rendimiento</label>
+    <div class="toolbar__filters">
+      <input class="input input--sm {% if errors.rendimiento_cantidad %}input--bad{% endif %}"
+             id="rendimiento_cantidad" name="rendimiento_cantidad"
+             value="{{ valores.rendimiento_cantidad or '' }}" inputmode="decimal" placeholder="2500">
+      <select class="input input--sm {% if errors.rendimiento_unidad %}input--bad{% endif %}"
+              name="rendimiento_unidad">
+        {% for u in ('g', 'ml', 'unidad') %}
+        <option value="{{ u }}" {% if valores.rendimiento_unidad == u %}selected{% endif %}>{{ UNIDAD_LABELS.get(u, u) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if errors.rendimiento_cantidad %}<p class="field__error">{{ errors.rendimiento_cantidad }}</p>{% endif %}
+    {% if errors.rendimiento_unidad %}<p class="field__error">{{ errors.rendimiento_unidad }}</p>{% endif %}
+    <p class="field__hint">
+      Cuánto sale del lote entero. Es lo que hace que otra receta la pueda
+      pedir por gramo: si entran 3 000 g y rinde 2 500 g, esos 500 g de
+      evaporación quedan repartidos entre los gramos que sobrevivieron.
+      <br>
+      <strong>No es lo mismo que la merma</strong>: la merma es lo que se
+      pierde limpiando un insumo comprado, esto es lo que produce la
+      receta. Aplicar las dos a la misma pérdida la cuenta dos veces.
+    </p>
+  </div>
+
+  <div class="field" data-solo="plato" {% if tipo != 'plato' %}hidden{% endif %}>
+    <label for="categoria_menu">Categoría del menú</label>
+    <input class="input" id="categoria_menu" name="categoria_menu"
+           value="{{ valores.categoria_menu or '' }}" placeholder="Fondos, Entradas, Bebidas…">
+  </div>
+
+  <div class="field">
+    <label for="descripcion">Descripción</label>
+    <textarea class="input" id="descripcion" name="descripcion" rows="2">{{ valores.descripcion or '' }}</textarea>
+  </div>
+
+  <div class="field">
+    <label for="notas_produccion">Notas de producción</label>
+    <textarea class="input" id="notas_produccion" name="notas_produccion" rows="3">{{ valores.notas_produccion or '' }}</textarea>
+    <p class="field__hint">Cómo se hace. No entra en el costo.</p>
+  </div>
+
+  <div class="actions">
+    <button class="btn" type="submit">{{ 'Guardar' if editando else 'Crear' }}</button>
+    <a class="btn btn--ghost" href="{{ '/recetas/' ~ receta.id if editando else '/recetas' }}">Cancelar</a>
+  </div>
+</form>
+
+{% endblock %}

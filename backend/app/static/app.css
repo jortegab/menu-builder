@@ -156,3 +156,60 @@ textarea.input { width: 100%; resize: vertical; }
 .sub { margin: 18px 0 0; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
 .aviso { padding: 9px 12px; border-radius: 8px; margin: 10px 0 0; font-size: 13px; }
 .aviso--warn { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); }
+
+/* --- the builder (PLAN.md §10.1) -------------------------------------- */
+/* Two columns: what you can add on the left, what the receta is on the
+   right. Collapses to one on a narrow screen -- the palette above the
+   lines, because you pick before you place. */
+.builder { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .builder { grid-template-columns: 1fr; } }
+.builder__paleta { padding: 14px; max-height: 78vh; overflow-y: auto; }
+
+.paleta__buscar { width: 100%; margin-bottom: 4px; }
+.paleta__pie { margin: 14px 0 0; }
+.pal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: grab;
+}
+.pal:hover { background: var(--paper); border-color: var(--line); }
+.pal__nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal.is-arrastrando { opacity: .5; }
+
+.btn--xs { padding: 2px 7px; font-size: 12px; border-radius: 6px; }
+.input--xs { width: 68px; padding: 4px 6px; font-size: 13px; }
+select.input--xs { width: auto; }
+
+.lineas__asa { width: 22px; color: var(--ink-soft); cursor: grab; user-select: none; }
+.lineas__acciones { display: flex; gap: 4px; justify-content: flex-end; }
+.linea--faltante { background: var(--amber-soft); }
+.linea__cantidad { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+.linea__desglose td { padding-top: 0; border-bottom: 1px solid var(--line); }
+.grid--anidada { margin: 6px 0 4px; }
+.grid--anidada td { border-bottom: none; padding: 3px 8px; }
+/* The drop indicator while a line is being dragged over another. */
+.linea.is-destino td { box-shadow: inset 0 2px 0 0 var(--teal); }
+.linea.is-arrastrando { opacity: .4; }
+
+.soltar {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--ink-soft);
+  text-align: center;
+  font-size: 13px;
+}
+.soltar.is-encima { border-color: var(--teal); background: var(--teal-soft); color: var(--teal); }
+
+.totales { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.totales .kpi { flex: 1 1 150px; }
+.kpi--fuerte { border-color: var(--teal); background: var(--teal-soft); }
+.kpi--fuerte .kpi__value { color: var(--teal); }
+
+.aviso--alert { color: var(--alert); background: var(--alert-soft); border: 1px solid var(--alert); }
+.radios { display: flex; flex-direction: column; gap: 6px; }

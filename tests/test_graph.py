@@ -12,7 +12,10 @@ from app.services.graph import (
     RecipeTooDeep,
     build_adjacency,
     cost_recipe,
+    depth_below,
+    depth_through_edge,
     find_cycle,
+    height_above,
     would_create_cycle,
 )
 from app.services.units import IncompatibleUnits
@@ -287,6 +290,51 @@ class TestRecipeCost(unittest.TestCase):
             ])
         }
         self.assertEqual([ln.nombre for ln in cost_recipe(1, recetas, insumos).lineas], ["A", "B"])
+
+
+class ProfundidadDelGrafo(unittest.TestCase):
+    """`depth_below` / `height_above` / `depth_through_edge` -- the write-time
+    depth guard. `cost_recipe` raises RecipeTooDeep on read; these are what
+    let the *save* refuse the line instead, while the operator is still
+    looking at it."""
+
+    CADENA = {1: {2}, 2: {3}, 3: {4}, 4: set()}
+
+    def test_una_hoja_no_tiene_profundidad(self):
+        self.assertEqual(depth_below(self.CADENA, 4), 0)
+
+    def test_profundidad_es_aristas_no_nodos(self):
+        self.assertEqual(depth_below(self.CADENA, 1), 3)
+
+    def test_una_raiz_no_tiene_altura(self):
+        self.assertEqual(height_above(self.CADENA, 1), 0)
+
+    def test_altura_es_el_camino_mas_largo_que_llega(self):
+        self.assertEqual(height_above(self.CADENA, 4), 3)
+
+    def test_toma_la_rama_mas_larga_no_la_primera(self):
+        ady = {1: {2, 3}, 2: set(), 3: {4}, 4: {5}, 5: set()}
+        self.assertEqual(depth_below(ady, 1), 3)
+
+    def test_un_diamante_no_cuenta_dos_veces(self):
+        ady = {1: {2, 3}, 2: {4}, 3: {4}, 4: set()}
+        self.assertEqual(depth_below(ady, 1), 2)
+        self.assertEqual(height_above(ady, 4), 2)
+
+    def test_el_borde_nuevo_suma_los_dos_lados(self):
+        arriba = {1: {2}, 2: {3}, 3: set()}
+        abajo = {10: {11}, 11: {12}, 12: set()}
+        ady = {**arriba, **abajo}
+        # 3 sits 2 edges down; 10 has 2 edges below it; the new edge is one
+        # more -- neither half looks deep on its own.
+        self.assertEqual(depth_through_edge(ady, 3, 10), 5)
+
+    def test_no_se_cuelga_con_un_ciclo(self):
+        """It runs as a guard, and a guard that hangs on the input it
+        guards against is not a guard."""
+        ciclo = {1: {2}, 2: {3}, 3: {1}}
+        self.assertIsInstance(depth_below(ciclo, 1), int)
+        self.assertIsInstance(height_above(ciclo, 1), int)
 
 
 if __name__ == "__main__":

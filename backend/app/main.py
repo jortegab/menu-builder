@@ -43,6 +43,8 @@ app.include_router(ajustes.router)
 # validates the matched route rather than falling through to the next one.
 app.include_router(mapeo.router)
 app.include_router(insumos.router)
+# recetas last: its `/recetas/nueva` vs `/recetas/{receta_id}` ordering is
+# handled inside the router itself, in declaration order.
 app.include_router(recetas.router)
 
 templates.env.globals["company_name"] = settings.company_name

@@ -12,8 +12,8 @@ historial de compras real, con descuentos, sin IVA, convertido a colones
 cuando la factura vino en dólares. Este app no vuelve a calcular nada de
 eso: lo lee.
 
-> **Estado: fase 1, paso 1.5.** Ya funciona todo lo que va desde la
-> factura hasta el costo de un insumo:
+> **Estado: fase 1, paso 1.6.** Ya funciona todo lo que va desde la
+> factura hasta el costo de un plato:
 >
 > - El catálogo de `restaurant-manager` se trae completo y se mantiene al
 >   día — **1 420 productos y 17 646 compras** — desde **Ajustes**.
@@ -23,11 +23,15 @@ eso: lo lee.
 > - **El costeo corre sobre datos reales**: una pechuga alimentada por
 >   cuatro proveedores da ₡4,36 por gramo usable, y la pantalla muestra de
 >   dónde sale cada número.
+> - **Recetas y preparaciones** se arman, se anidan y se cuestan. Un fondo
+>   dentro de una salsa dentro de un plato — tres niveles, que es
+>   exactamente lo que anida esta cocina — da ₡790,51 el plato, y la misma
+>   cuenta hecha a mano en SQL da lo mismo al céntimo.
 >
-> **Lo que todavía no existe son las recetas** — ni las preparaciones, ni
-> el constructor, ni el histórico de costo del plato. El motor que las
-> costea está escrito y probado desde el principio, pero no hay pantalla
-> que lo use. Ver «Qué falta».
+> **Lo que todavía no existe:** arrastrar y soltar en el constructor, el
+> total que se mueve solo mientras se escribe, y el histórico de costo del
+> plato. Las recetas se arman igual, con botones y recarga de página. Ver
+> «Qué falta».
 
 ---
 
@@ -168,9 +172,10 @@ declara porciones.
 
 ## Qué hace y qué va a hacer (fase 1)
 
-> **Insumos, Mapeo y el costeo ya están construidos y corriendo contra
-> datos reales.** Lo que sigue sin existir es todo lo de recetas: el
-> constructor, las preparaciones y el histórico de costo del plato.
+> **Insumos, Mapeo, el costeo y las recetas ya están construidos y
+> corriendo contra datos reales.** De esta sección, lo único que todavía no
+> existe es **arrastrar y soltar**, el total que se mueve mientras se
+> escribe, y el **histórico** del costo del plato.
 
 ### Insumos
 
@@ -217,33 +222,50 @@ texto: más tosca, pero nunca se queda en blanco.
 
 La pantalla para la que existe todo lo demás.
 
-A la izquierda un buscador con los insumos y las preparaciones. **Se
-arrastran** a la receta, o se agregan con un botón — arrastrar es el camino
-rápido, nunca el único. Cada línea tiene su cantidad como campo numérico y
-un selector de unidad que solo ofrece unidades compatibles. Se cambia un
-número y **el costo se mueve solo**: el de la línea, el total y el de la
-porción.
+A la izquierda un buscador con los insumos y las preparaciones; a la
+derecha, la receta. Cada línea tiene su cantidad y un selector de unidad
+**que solo ofrece unidades compatibles**: una pechuga que se costea en
+gramos se puede pedir en kg, g o lb, y ml ni siquiera aparece. Cada línea
+muestra cuánto cuesta y qué porcentaje del plato representa, porque «qué es
+lo caro acá» es la pregunta de esa pantalla. Una preparación se abre en el
+mismo lugar para ver su desglose.
 
-Cada línea muestra cuánto cuesta y qué porcentaje del plato representa,
-porque «qué es lo caro acá» es la pregunta de esa pantalla. Una preparación
-se abre en el mismo lugar para ver su desglose.
+*(Arrastrar y soltar, y el total que se mueve mientras se escribe, son el
+paso 1.6 — todavía no. Hoy se agrega con el botón «Agregar», se reordena
+con las flechas y la página se recarga.)*
 
 Si a algún ingrediente le falta precio, el total **no se muestra**. Ni
 gris, ni parcial, ni aproximado: un guion, un aviso, y el nombre del
-ingrediente que falta con su enlace. Un número en pantalla es un número que
-alguien va a usar.
+ingrediente que falta. Y sube: si al fondo le falta un precio, la salsa que
+lo lleva y el plato que lleva la salsa quedan los dos incompletos. Un
+número en pantalla es un número que alguien va a usar.
 
-### Histórico
+Cuatro cosas se rechazan en el momento de guardar, y cada una dice cuál es
+el problema:
+
+- **Un círculo entre recetas**, con la cadena escrita: «Salsa criolla →
+  Fondo oscuro → Salsa criolla». Una receta no puede terminar
+  conteniéndose a sí misma.
+- **Más de cinco niveles de anidamiento.** La cocina anida tres.
+- **Un plato usado como ingrediente.** Un plato declara porciones, no
+  rendimiento, así que no hay «cuánto vale un gramo de plato».
+- **Una unidad de otra magnitud** — 6 oz de algo que se costea en gramos.
+  El mensaje nombra las dos unidades.
+
+### Histórico *(todavía no)*
 
 Cuánto costaba este plato hace tres meses. Una foto diaria del costo, con
 el método y la ventana que se usaron ese día, en la misma tarjeta que
-`restaurant-manager` ya usa para el histórico de precios.
+`restaurant-manager` ya usa para el histórico de precios. Es el paso 1.7.
 
 ---
 
 ## Qué falta
 
-**Todo lo de arriba.** Lo que sí está, hoy:
+De la fase 1 quedan dos cosas: **arrastrar y soltar con el total en vivo**
+(paso 1.6) y el **histórico de costo del plato** (paso 1.7).
+
+Lo que sí está, hoy:
 
 - El diseño completo, con sus decisiones y el porqué de cada una —
   `PLAN.md`, 31 decisiones numeradas y 8 reglas innegociables.
@@ -252,10 +274,12 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
 - **La sincronización del catálogo**, funcionando contra el app real: 1 420
   productos y 17 645 compras en 46 segundos, y unos 2 segundos cuando solo
   trae lo que cambió. Se maneja desde Ajustes.
+- **Insumos, mapeo, costeo y recetas**, todo contra datos reales.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 183
+  el recorrido del grafo de recetas y la detección de ciclos — con 248
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
-  una salsa que se contiene a sí misma, unidades incompatibles).
+  una salsa que se contiene a sí misma, unidades incompatibles, y un
+  anidamiento que se pasa del tope por los dos lados a la vez).
 
 Y después de la fase 1 quedan dos más, ya pensadas pero sin diseñar:
 

@@ -68,6 +68,13 @@ class Linea:
     cantidad: Decimal
     unidad: str
     orden: int = 0
+    # The `receta_linea.id` this was built from, when it came from the
+    # database. Carried so the builder screen can put a costed line back
+    # beside its own editable row without re-deriving the pairing from the
+    # ordering -- which would be one duplicate `orden` away from showing a
+    # cost on the wrong line. Optional, and every test that builds a Linea
+    # by hand leaves it None: this module never reads it.
+    linea_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -299,3 +306,67 @@ def cost_recipe(
     )
     memo[receta_id] = resultado
     return resultado
+
+
+# --------------------------------------------------------------------------
+# Write-time guards. `find_cycle`/`would_create_cycle` above answer "is this
+# edge legal at all"; these two answer "how deep does it make the graph",
+# which is the other question a save has to settle before it writes a row.
+#
+# Both are approximate on a graph that already contains a cycle -- they
+# return *a* finite number rather than looping -- because they run *after*
+# `would_create_cycle` in every real caller, and a guard that can hang on
+# the input it guards against is not a guard.
+# --------------------------------------------------------------------------
+
+
+def depth_below(adjacency: dict[int, set[int]], nodo: int) -> int:
+    """Edges on the longest downward path starting at `nodo`. A receta that
+    contains no other receta is 0.
+    """
+    memo: dict[int, int] = {}
+    en_camino: set[int] = set()
+    pila: list[tuple[int, bool]] = [(nodo, False)]
+    while pila:
+        n, resuelto = pila.pop()
+        if resuelto:
+            en_camino.discard(n)
+            hijos = [memo.get(h, 0) for h in adjacency.get(n, set())]
+            memo[n] = 1 + max(hijos) if hijos else 0
+            continue
+        if n in memo or n in en_camino:
+            # Already counted, or the node is its own ancestor. Either way
+            # there is nothing further to walk down this branch.
+            memo.setdefault(n, 0)
+            continue
+        en_camino.add(n)
+        pila.append((n, True))
+        for hijo in adjacency.get(n, set()):
+            pila.append((hijo, False))
+    return memo.get(nodo, 0)
+
+
+def height_above(adjacency: dict[int, set[int]], nodo: int) -> int:
+    """Edges on the longest path that *reaches* `nodo` from above -- how far
+    down the graph this receta already sits. A receta nobody uses is 0.
+    """
+    inverso: dict[int, set[int]] = {}
+    for padre, hijos in adjacency.items():
+        inverso.setdefault(padre, set())
+        for hijo in hijos:
+            inverso.setdefault(hijo, set()).add(padre)
+    return depth_below(inverso, nodo)
+
+
+def depth_through_edge(adjacency: dict[int, set[int]], padre: int, hijo: int) -> int:
+    """Edges on the longest chain that would run through a *new*
+    `padre -> hijo` edge. `adjacency` must not already contain it.
+
+    Compared against `MAX_DEPTH` before the line is written, so a nest too
+    deep to cost is refused at the point the operator can still fix it,
+    rather than raising `RecipeTooDeep` the next time the plate is opened.
+    Both ends matter: adding a two-level salsa under a plato that is itself
+    already two levels down is what overflows, and neither half looks deep
+    on its own.
+    """
+    return height_above(adjacency, padre) + 1 + depth_below(adjacency, hijo)

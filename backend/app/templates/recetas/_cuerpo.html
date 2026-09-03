@@ -1,0 +1,175 @@
+{#- The lines of a receta and its totals.
+
+    Rendered both as part of `detail.html` and on its own as the answer to
+    every line edit, from the same `_contexto_builder` context. That is D16
+    made structural: there is no JSON endpoint and no cost arithmetic in the
+    browser, so the total after a drag is computed by exactly the code that
+    computed the one on page load. -#}
+<div class="card builder__cuerpo" id="receta-cuerpo">
+
+  {% if error_linea %}
+  <p class="aviso aviso--alert">{{ error_linea }}</p>
+  {% endif %}
+
+  {% if costeo.error %}
+  <p class="aviso aviso--alert">
+    {{ costeo.error }}
+  </p>
+  {% endif %}
+
+  {% if costeo.faltantes %}
+  <div class="aviso aviso--warn">
+    <strong>Receta incompleta.</strong>
+    Sin precio: {% for f in costeo.faltantes %}«{{ f }}»{% if not loop.last %}, {% endif %}{% endfor %}.
+    Mientras falte uno solo no se muestra ningún total — una suma parcial se
+    lee como el costo del plato y no lo es.
+  </div>
+  {% endif %}
+
+  {% if costeo.lineas %}
+  <table class="grid lineas" id="lineas">
+    <thead>
+      <tr>
+        <th class="lineas__asa"></th>
+        <th>Ingrediente</th>
+        <th class="num">Cantidad</th>
+        <th class="num">Costo</th>
+        <th class="num">%</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="lineas-cuerpo">
+      {% for c in costeo.lineas %}
+      {% set fila = filas.get(c.linea.linea_id) %}
+      {% if fila %}
+      <tr class="linea{% if c.faltante %} linea--faltante{% endif %}"
+          data-linea-id="{{ fila.id }}" draggable="true">
+        <td class="lineas__asa" aria-hidden="true">⠿</td>
+        <td>
+          {% if fila.tipo_componente == 'insumo' %}
+            <a href="/insumos/{{ fila.insumo_id }}">{{ c.nombre }}</a>
+          {% else %}
+            <a href="/recetas/{{ fila.componente_receta_id }}">{{ c.nombre }}</a>
+            <span class="pip">preparación</span>
+          {% endif %}
+          {% if c.faltante %}<span class="pip pip--warn">sin precio</span>{% endif %}
+          {% if c.costo_unitario is not none %}
+          <div class="muted small">
+            {{ c.costo_unitario | money }} por {{ UNIDAD_NOMBRES.get(bases.get(fila.id), bases.get(fila.id, '')) }}
+          </div>
+          {% endif %}
+        </td>
+        <td class="num">
+          <form class="linea__cantidad" method="post"
+                action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}">
+            <input class="input input--xs" name="cantidad" value="{{ fila.cantidad | cantidad }}"
+                   inputmode="decimal" aria-label="Cantidad de {{ c.nombre }}">
+            <select class="input input--xs" name="unidad" aria-label="Unidad de {{ c.nombre }}">
+              {% for u in unidades.get(fila.id, [fila.unidad]) %}
+              <option value="{{ u }}" {% if u == fila.unidad %}selected{% endif %}>{{ UNIDAD_NOMBRES.get(u, u) }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn--ghost btn--xs" type="submit">Aplicar</button>
+          </form>
+        </td>
+        <td class="num">{{ c.costo | money }}</td>
+        <td class="num muted">
+          {% if c.costo is not none and costeo.costo_total and costeo.costo_total > 0 %}
+            {{ (c.costo / costeo.costo_total * 100) | pct }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="lineas__acciones">
+          <form method="post" action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/mover">
+            <input type="hidden" name="delta" value="-1">
+            <button class="btn btn--ghost btn--xs" type="submit" title="Subir"
+                    {% if loop.first %}disabled{% endif %}>↑</button>
+          </form>
+          <form method="post" action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/mover">
+            <input type="hidden" name="delta" value="1">
+            <button class="btn btn--ghost btn--xs" type="submit" title="Bajar"
+                    {% if loop.last %}disabled{% endif %}>↓</button>
+          </form>
+          <form method="post" action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/eliminar">
+            <button class="btn btn--ghost btn--xs" type="submit" title="Quitar">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% if c.desglose %}
+      <tr class="linea__desglose">
+        <td></td>
+        <td colspan="5">
+          <details>
+            <summary class="muted small">Ver de qué está hecha «{{ c.nombre }}»</summary>
+            <table class="grid grid--anidada">
+              <tbody>
+                {% for sub in c.desglose.lineas %}
+                <tr>
+                  <td>{{ sub.nombre }}{% if sub.faltante %} <span class="pip pip--warn">sin precio</span>{% endif %}</td>
+                  <td class="num muted">{{ sub.linea.cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(sub.linea.unidad, sub.linea.unidad) }}</td>
+                  <td class="num">{{ sub.costo | money }}</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                  <td class="muted small">Lote entero</td>
+                  <td></td>
+                  <td class="num">{{ c.desglose.costo_total | money }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+        </td>
+      </tr>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Esta receta todavía no tiene ingredientes.</p>
+  <p class="empty__hint">
+    Arrastrá algo de la lista de la izquierda, o usá su botón «Agregar».
+  </p>
+  {% endif %}
+
+  <div class="soltar" id="soltar">Soltá acá para agregar</div>
+
+  <div class="totales">
+    <div class="kpi">
+      <div class="kpi__label">Costo total</div>
+      <div class="kpi__value">{{ costeo.costo_total | money }}</div>
+    </div>
+    {% if receta.tipo == 'plato' %}
+    <div class="kpi">
+      <div class="kpi__label">Porciones</div>
+      <div class="kpi__value">{{ receta.porciones }}</div>
+    </div>
+    <div class="kpi kpi--fuerte">
+      <div class="kpi__label">Costo por porción</div>
+      <div class="kpi__value">{{ costeo.costo_por_porcion | money }}</div>
+    </div>
+    {% else %}
+    <div class="kpi">
+      <div class="kpi__label">Rinde</div>
+      <div class="kpi__value kpi__value--sm">
+        {{ receta.rendimiento_cantidad | cantidad }}
+        {{ UNIDAD_NOMBRES.get(receta.rendimiento_unidad, receta.rendimiento_unidad) }}
+      </div>
+    </div>
+    <div class="kpi kpi--fuerte">
+      <div class="kpi__label">Costo por {{ receta.rendimiento_unidad }}</div>
+      <div class="kpi__value">{{ costeo.costo_por_unidad_rendimiento | money }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if costeo.estado == 'incompleto' and not costeo.faltantes and costeo.lineas %}
+  <p class="muted small">
+    Alguna preparación de esta receta está incompleta. Abrila para ver qué
+    ingrediente le falta.
+  </p>
+  {% endif %}
+
+  <form method="post" action="/recetas/{{ receta.id }}/lineas/orden" id="form-orden">
+    <input type="hidden" name="orden" value="">
+  </form>
+</div>

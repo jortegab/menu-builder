@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% set es_plato = receta.tipo == 'plato' %}
+{% set seccion = 'recetas' if es_plato else 'preparaciones' %}
+{% block title %}{{ receta.nombre }} · Menu Builder{% endblock %}
+{% block heading %}{{ receta.nombre }}{% if not receta.activo %} <span class="pip">Archivada</span>{% endif %}{% endblock %}
+{% block content %}
+
+<div class="toolbar">
+  <div class="muted small">
+    {% if es_plato %}Plato{% else %}Preparación{% endif %}
+    {% if receta.categoria_menu %} · {{ receta.categoria_menu }}{% endif %}
+    · <code>{{ receta.slug }}</code>
+    {% if usos %}
+      · usada en
+      {% for u in usos %}<a href="/recetas/{{ u.id }}">{{ u.nombre }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}
+  </div>
+  <div class="actions">
+    <a class="btn btn--ghost" href="/recetas/{{ receta.id }}/editar">Editar</a>
+    <form method="post" action="/recetas/{{ receta.id }}/archivar">
+      <input type="hidden" name="activo" value="{{ '0' if receta.activo else '1' }}">
+      <button class="btn btn--ghost" type="submit">
+        {{ 'Archivar' if receta.activo else 'Reactivar' }}
+      </button>
+    </form>
+  </div>
+</div>
+
+{% if receta.descripcion %}<p class="muted">{{ receta.descripcion }}</p>{% endif %}
+
+<div class="builder">
+  <aside class="builder__paleta card">
+    {% include "recetas/_paleta.html" %}
+  </aside>
+  <section class="builder__lineas">
+    {% include "recetas/_cuerpo.html" %}
+  </section>
+</div>
+
+{% if receta.notas_produccion %}
+<div class="card">
+  <h2 class="card__title">Notas de producción</h2>
+  <p>{{ receta.notas_produccion }}</p>
+</div>
+{% endif %}
+
+{% endblock %}

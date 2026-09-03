@@ -30,6 +30,7 @@ import sys
 import unittest
 from pathlib import Path
 
+from fastapi import Request
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -46,6 +47,9 @@ class DbTestCase(unittest.TestCase):
         # an unparseable price); muting keeps a passing run readable, and
         # `assertLogs` still works where a test asserts on a warning.
         logging.getLogger("app").setLevel(logging.ERROR)
+        # TestClient logs one INFO line per request (tests/test_routes_smoke.py
+        # makes dozens), which buries a real failure in traffic.
+        logging.getLogger("httpx").setLevel(logging.WARNING)
         self.engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -69,6 +73,25 @@ class DbTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         self.db.close()
         self.engine.dispose()
+
+    def override_get_db(self, request: Request) -> Session:
+        """A `dependency_overrides[get_db]` that matches the real
+        dependency's whole contract, not just its return value.
+
+        `app.db.get_db` publishes its Session on `request.state.db` so
+        template code can reach the same one -- base.html's rail does,
+        through `templating.pendientes_mapeo`. An override that only
+        returned `self.db` would leave that global with no session and
+        silently exercise its fallback, so a page-rendering test would
+        cover a path production never takes.
+
+        The `Request` annotation is load-bearing: FastAPI reads the
+        *override's* own signature, so an unannotated `request` parameter
+        is treated as a required query parameter and every request 422s.
+        Ported verbatim from restaurant-manager's own harness.
+        """
+        request.state.db = self.db
+        return self.db
 
 
 class FakeCatalogClient:

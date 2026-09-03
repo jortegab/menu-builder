@@ -149,19 +149,17 @@
   {% endif %}
 </div>
 
+{% if not fuentes %}
 <div class="card">
   <h2 class="card__title">Fuentes</h2>
-  {% if fuentes %}
-    <p>{{ fuentes }} producto(s) del catálogo alimentan este insumo.</p>
-  {% else %}
-    <p class="empty">Este insumo todavía no tiene ningún producto asociado.</p>
-    <p class="empty__hint">
-      Sin fuentes no hay precio, y sin precio este insumo no puede costear
-      ninguna receta — va a aparecer como faltante. La pantalla de mapeo,
-      que es donde se asocian, todavía no está construida.
-    </p>
-  {% endif %}
+  <p class="empty">Este insumo todavía no tiene ningún producto asociado.</p>
+  <p class="empty__hint">
+    Sin fuentes no hay precio, y sin precio este insumo no puede costear
+    ninguna receta — va a aparecer como faltante en cada una que lo use.
+    Se asocian en <a href="/insumos/mapeo">Mapeo</a>.
+  </p>
 </div>
+{% endif %}
 
 {% if insumo.notas %}
 <div class="card">

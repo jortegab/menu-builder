@@ -85,7 +85,7 @@ def unique_slug(db: Session, nombre: str, *, exclude_id: int | None = None) -> s
         candidate = f"{base}-{n}"
 
 
-def _parse_decimal(raw: str) -> Decimal | None:
+def parse_decimal(raw: str) -> Decimal | None:
     """A number typed by a person. Accepts "12", "12.5" and "12,5" -- the
     comma is the decimal separator in Costa Rica and a form that rejects it
     is a form fighting its user.
@@ -130,7 +130,7 @@ def validate(
 
     merma = Decimal(0)
     try:
-        parsed = _parse_decimal(merma_pct)
+        parsed = parse_decimal(merma_pct)
         merma = Decimal(0) if parsed is None else parsed
         if merma < 0:
             errors["merma_pct"] = "La merma no puede ser negativa."
