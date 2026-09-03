@@ -39,7 +39,7 @@ class TestSlug(unittest.TestCase):
 
 class TestValidation(unittest.TestCase):
     def base(self, **kw):
-        form = {"nombre": "Pechuga", "unidad_uso": "g"}
+        form = {"nombre": "Pechuga", "unidad_base": "g"}
         form.update(kw)
         return form
 
@@ -60,8 +60,8 @@ class TestValidation(unittest.TestCase):
         # "kg" is arithmetically fine and reads badly on every recipe
         # (0.18 kg of pechuga), so it is not offered as a unidad de uso.
         with self.assertRaises(svc.ValidationError) as ctx:
-            svc.validate(**self.base(unidad_uso="kg"))
-        self.assertIn("unidad_uso", ctx.exception.errors)
+            svc.validate(**self.base(unidad_base="kg"))
+        self.assertIn("unidad_base", ctx.exception.errors)
 
     def test_comma_is_a_valid_decimal_separator(self):
         # Costa Rica writes 12,5. A form that rejects it fights its user.
@@ -104,9 +104,9 @@ class TestValidation(unittest.TestCase):
     def test_errors_are_keyed_by_field(self):
         # So the template can put each message beside its own input.
         with self.assertRaises(svc.ValidationError) as ctx:
-            svc.validate(nombre="", unidad_uso="litros", merma_pct="200")
+            svc.validate(nombre="", unidad_base="litros", merma_pct="200")
         self.assertEqual(
-            sorted(ctx.exception.errors), ["merma_pct", "nombre", "unidad_uso"]
+            sorted(ctx.exception.errors), ["merma_pct", "nombre", "unidad_base"]
         )
 
     def test_blank_optional_text_becomes_null_not_empty_string(self):
@@ -117,48 +117,48 @@ class TestValidation(unittest.TestCase):
 
 class TestCrud(DbTestCase):
     def test_create_assigns_a_slug(self):
-        insumo = svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumo = svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         self.assertEqual(insumo.slug, "pechuga-deshuesada")
         self.assertTrue(insumo.activo)
 
     def test_two_insumos_may_share_a_name(self):
         # The name is not the identity; the row is. Failing the save here
         # would be wrong.
-        a = svc.create(self.db, nombre="Salsa", unidad_uso="ml")
-        b = svc.create(self.db, nombre="Salsa", unidad_uso="ml")
+        a = svc.create(self.db, nombre="Salsa", unidad_base="ml")
+        b = svc.create(self.db, nombre="Salsa", unidad_base="ml")
         self.assertEqual(a.slug, "salsa")
         self.assertEqual(b.slug, "salsa-2")
 
     def test_update_reslugs_only_when_the_name_changed(self):
-        insumo = svc.create(self.db, nombre="Pechuga", unidad_uso="g")
-        svc.update(self.db, insumo, nombre="Pechuga", unidad_uso="g", merma_pct="12")
+        insumo = svc.create(self.db, nombre="Pechuga", unidad_base="g")
+        svc.update(self.db, insumo, nombre="Pechuga", unidad_base="g", merma_pct="12")
         self.assertEqual(insumo.slug, "pechuga")
         self.assertEqual(insumo.merma_pct, Decimal(12))
 
-        svc.update(self.db, insumo, nombre="Pechuga deshuesada", unidad_uso="g")
+        svc.update(self.db, insumo, nombre="Pechuga deshuesada", unidad_base="g")
         self.assertEqual(insumo.slug, "pechuga-deshuesada")
 
     def test_update_can_clear_back_to_the_app_default(self):
         insumo = svc.create(
-            self.db, nombre="Pechuga", unidad_uso="g",
+            self.db, nombre="Pechuga", unidad_base="g",
             metodo_costeo="max_window", ventana_dias="30",
         )
         self.assertEqual(insumo.metodo_costeo, "max_window")
-        svc.update(self.db, insumo, nombre="Pechuga", unidad_uso="g")
+        svc.update(self.db, insumo, nombre="Pechuga", unidad_base="g")
         self.assertIsNone(insumo.metodo_costeo)
         self.assertIsNone(insumo.ventana_dias)
 
     def test_invalid_update_does_not_write(self):
-        insumo = svc.create(self.db, nombre="Pechuga", unidad_uso="g", merma_pct="10")
+        insumo = svc.create(self.db, nombre="Pechuga", unidad_base="g", merma_pct="10")
         with self.assertRaises(svc.ValidationError):
-            svc.update(self.db, insumo, nombre="Pechuga", unidad_uso="g", merma_pct="200")
+            svc.update(self.db, insumo, nombre="Pechuga", unidad_base="g", merma_pct="200")
         self.db.expire_all()
         self.assertEqual(self.db.get(Insumo, insumo.id).merma_pct, Decimal(10))
 
     def test_archive_never_deletes(self):
         # An archived insumo may still be referenced by a receta_linea;
         # deleting it would orphan a recipe or silently change a cost.
-        insumo = svc.create(self.db, nombre="Pechuga", unidad_uso="g")
+        insumo = svc.create(self.db, nombre="Pechuga", unidad_base="g")
         svc.set_activo(self.db, insumo, False)
         self.assertFalse(insumo.activo)
         self.assertIsNotNone(self.db.get(Insumo, insumo.id))
@@ -169,9 +169,9 @@ class TestCrud(DbTestCase):
 class TestListing(DbTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.a = svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
-        self.b = svc.create(self.db, nombre="Aceite de oliva", unidad_uso="ml")
-        self.c = svc.create(self.db, nombre="Perejil", unidad_uso="g")
+        self.a = svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
+        self.b = svc.create(self.db, nombre="Aceite de oliva", unidad_base="ml")
+        self.c = svc.create(self.db, nombre="Perejil", unidad_base="g")
         svc.set_activo(self.db, self.c, False)
 
     def test_defaults_to_active_only(self):
@@ -191,7 +191,7 @@ class TestListing(DbTestCase):
 
 class TestCounts(DbTestCase):
     def test_usage_count_reflects_recipe_lines(self):
-        insumo = svc.create(self.db, nombre="Pechuga", unidad_uso="g")
+        insumo = svc.create(self.db, nombre="Pechuga", unidad_base="g")
         self.assertEqual(svc.usage_count(self.db, insumo), 0)
 
         receta = Receta(nombre="Pollo", slug="pollo", tipo="plato", porciones=1)

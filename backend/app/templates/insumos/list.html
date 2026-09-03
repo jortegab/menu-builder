@@ -23,7 +23,7 @@
     <thead>
       <tr>
         <th>Insumo</th>
-        <th>Unidad de uso</th>
+        <th>Unidad base</th>
         <th class="num">Merma</th>
         <th>Método</th>
         <th class="num">Fuentes</th>
@@ -38,7 +38,7 @@
           {% if not i.activo %}<span class="pip">Archivado</span>{% endif %}
           {% if i.categoria_slug %}<div class="muted small">{{ i.categoria_slug }}</div>{% endif %}
         </td>
-        <td>{{ UNIDAD_LABELS.get(i.unidad_uso, i.unidad_uso) }}</td>
+        <td>{{ UNIDAD_LABELS.get(i.unidad_base, i.unidad_base) }}</td>
         <td class="num">{{ i.merma_pct | pct }}</td>
         <td>
           {% if i.metodo_costeo %}{{ METODO_LABELS.get(i.metodo_costeo) }}
@@ -51,7 +51,7 @@
         <td class="num">
           {% set c = costos.get(i.id) %}
           {% if c and c.valor is not none %}
-            {{ c.valor | money }}<span class="muted small">/{{ i.unidad_uso }}</span>
+            {{ c.valor | money }}<span class="muted small">/{{ i.unidad_base }}</span>
             {% if c.precio_viejo %}<span class="pip pip--warn" title="El precio más nuevo tiene {{ c.antiguedad_dias }} días">viejo</span>{% endif %}
           {% else %}<span class="muted">—</span>{% endif %}
         </td>

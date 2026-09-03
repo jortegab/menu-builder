@@ -109,14 +109,14 @@ class TestSugerencia(MapeoTestCase):
         self.assertEqual(s.origen, "ninguna")
 
     def test_matches_an_existing_insumo_by_similarity(self):
-        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         s = svc.sugerir(self.db, self.producto())
         self.assertEqual(s.insumo_id, insumo.id)
         self.assertEqual(s.insumo_nombre, "Pechuga deshuesada")
         self.assertEqual(s.origen, "similitud")
 
     def test_reads_the_factor_from_the_description(self):
-        insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         s = svc.sugerir(self.db, self.producto())
         self.assertEqual(s.factor, Decimal(5000))
         self.assertEqual(s.factor_origen, "descripcion")
@@ -129,7 +129,7 @@ class TestSugerencia(MapeoTestCase):
         self.assertEqual(s.factor_origen, "sin_resolver")
 
     def test_a_rejected_insumo_is_not_offered_again(self):
-        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         p = self.producto()
         self.assertEqual(svc.sugerir(self.db, p).insumo_id, insumo.id)
 
@@ -139,12 +139,12 @@ class TestSugerencia(MapeoTestCase):
         self.assertTrue(again.nombre_propuesto)
 
     def test_archived_insumos_are_not_suggested(self):
-        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         insumos_svc.set_activo(self.db, insumo, False)
         self.assertIsNone(svc.sugerir(self.db, self.producto()).insumo_id)
 
     def test_rejecting_twice_is_harmless(self):
-        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         p = self.producto()
         svc.rechazar(self.db, catalog_product_id=p.id, insumo_id=insumo.id)
         svc.rechazar(self.db, catalog_product_id=p.id, insumo_id=insumo.id)
@@ -156,7 +156,7 @@ class TestConfirmar(MapeoTestCase):
         p = self.producto()
         fuente = svc.confirmar(
             self.db, catalog_product_id=p.id, nombre_nuevo="Pechuga deshuesada",
-            unidad_uso="g", factor=Decimal(5000), factor_origen="descripcion",
+            unidad_base="g", factor=Decimal(5000), factor_origen="descripcion",
         )
         insumo = self.db.get(Insumo, fuente.insumo_id)
         self.assertEqual(insumo.nombre, "Pechuga deshuesada")
@@ -174,7 +174,7 @@ class TestConfirmar(MapeoTestCase):
 
     def test_attaches_a_second_product_to_the_same_insumo(self):
         # The whole point: two suppliers, one insumo.
-        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         a = self.producto(description="FILETE PECHUGA MFS 1/5KG", internal_code="8-a", upstream_product_id=1)
         b = self.producto(description="PECHUGA DESHUESADA", internal_code="11-b", upstream_product_id=2, supplier_id=11)
         svc.confirmar(self.db, catalog_product_id=a.id, insumo_id=insumo.id, factor=Decimal(5000))

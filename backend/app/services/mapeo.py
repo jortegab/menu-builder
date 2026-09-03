@@ -60,7 +60,7 @@ class Sugerencia:
     insumo_id: int | None          # an existing insumo, when one matched
     insumo_nombre: str | None      # that insumo's name, for the row to show
     nombre_propuesto: str | None   # a new insumo's name, when nothing matched
-    unidad_sugerida: str           # preselected unidad de uso for a new insumo
+    unidad_sugerida: str           # preselected unidad base for a new insumo
     confianza: Decimal | None
     origen: str                    # "llm" | "similitud" | "ninguna"
     factor: Decimal | None
@@ -150,7 +150,7 @@ def sugerir(db: Session, producto: CatalogProduct, compras: int = 0) -> Sugerenc
     nombre_propuesto: str | None = None
     confianza: Decimal | None = None
     origen = "ninguna"
-    unidad_uso_probable = "g"
+    unidad_base_probable = "g"
     llm_presentacion: tuple[Decimal, str] | None = None
 
     respuesta = llm_insumo.sugerir(
@@ -183,26 +183,26 @@ def sugerir(db: Session, producto: CatalogProduct, compras: int = 0) -> Sugerenc
     if insumo_id is not None:
         insumo = db.get(Insumo, insumo_id)
         if insumo is not None:
-            unidad_uso_probable = insumo.unidad_uso
+            unidad_base_probable = insumo.unidad_base
     else:
         presentacion = llm_presentacion or insumo_match.parse_presentacion(producto.description)
         if presentacion is not None:
             from .units import CANONICAL, dimension_of
 
-            unidad_uso_probable = CANONICAL[dimension_of(presentacion[1])]
+            unidad_base_probable = CANONICAL[dimension_of(presentacion[1])]
 
     if llm_presentacion is not None:
         from .units import UnknownUnit, convert
 
         try:
-            factor = convert(llm_presentacion[0], llm_presentacion[1], unidad_uso_probable)
+            factor = convert(llm_presentacion[0], llm_presentacion[1], unidad_base_probable)
             factor_origen = "llm_descripcion"
         except (UnknownUnit, ValueError):
             factor, factor_origen = None, "sin_resolver"
     else:
         factor, factor_origen = insumo_match.resolve_factor(
             descripcion=producto.description,
-            unidad_uso=unidad_uso_probable,
+            unidad_base=unidad_base_probable,
             unidad_medida=producto.unidad_medida,
             categoria_slug=producto.categoria_slug,
         )
@@ -217,7 +217,7 @@ def sugerir(db: Session, producto: CatalogProduct, compras: int = 0) -> Sugerenc
         insumo_id=insumo_id,
         insumo_nombre=insumo_nombre,
         nombre_propuesto=nombre_propuesto,
-        unidad_sugerida=unidad_uso_probable,
+        unidad_sugerida=unidad_base_probable,
         confianza=confianza,
         origen=origen,
         factor=factor,
@@ -241,7 +241,7 @@ def confirmar(
     catalog_product_id: int,
     insumo_id: int | None = None,
     nombre_nuevo: str = "",
-    unidad_uso: str = "g",
+    unidad_base: str = "g",
     factor: Decimal | None = None,
     factor_origen: str = "manual",
 ) -> InsumoFuente:
@@ -257,7 +257,7 @@ def confirmar(
         if not nombre:
             raise ValueError("Falta el nombre del insumo nuevo.")
         insumo = Insumo(
-            nombre=nombre, slug=unique_slug(db, nombre), unidad_uso=unidad_uso
+            nombre=nombre, slug=unique_slug(db, nombre), unidad_base=unidad_base
         )
         db.add(insumo)
         db.flush()

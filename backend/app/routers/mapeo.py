@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..services import mapeo as svc
-from ..services.insumos import UNIDADES_USO
+from ..services.insumos import UNIDADES_BASE
 from ..templating import templates
 
 router = APIRouter()
@@ -48,7 +48,7 @@ def cola(
             "q": q,
             "comida": comida,
             "reciente": reciente,
-            "unidades": UNIDADES_USO,
+            "unidades": UNIDADES_BASE,
             "por_pagina": _POR_PAGINA,
         },
     )
@@ -71,7 +71,7 @@ def confirmar(
     catalog_product_id: int = Form(...),
     insumo_id: str = Form(""),
     nombre_nuevo: str = Form(""),
-    unidad_uso: str = Form("g"),
+    unidad_base: str = Form("g"),
     factor: str = Form(""),
     factor_origen: str = Form("manual"),
 ):
@@ -80,7 +80,7 @@ def confirmar(
         catalog_product_id=catalog_product_id,
         insumo_id=int(insumo_id) if insumo_id.strip() else None,
         nombre_nuevo=nombre_nuevo,
-        unidad_uso=unidad_uso if unidad_uso in UNIDADES_USO else "g",
+        unidad_base=unidad_base if unidad_base in UNIDADES_BASE else "g",
         factor=_factor(factor),
         factor_origen=factor_origen,
     )

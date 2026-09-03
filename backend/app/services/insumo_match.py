@@ -133,7 +133,7 @@ def parse_presentacion(descripcion: str) -> tuple[Decimal, str] | None:
     """The pack size a description declares, as (cantidad, unidad), or None.
 
     **Always the total content**, in every shape. The factor a fuente
-    carries is how many `unidad_uso` one purchase unit yields, and the
+    carries is how many `unidad_base` one purchase unit yields, and the
     purchase unit is whatever the invoice priced -- so a case of 24 bottles
     is 24 bottles' worth, not one bottle's.
 
@@ -197,11 +197,11 @@ def parse_presentacion(descripcion: str) -> tuple[Decimal, str] | None:
 def resolve_factor(
     *,
     descripcion: str,
-    unidad_uso: str,
+    unidad_base: str,
     unidad_medida: str | None = None,
     categoria_slug: str | None = None,
 ) -> tuple[Decimal | None, str]:
-    """(factor_conversion, factor_origen) -- how many `unidad_uso` one
+    """(factor_conversion, factor_origen) -- how many `unidad_base` one
     purchase unit yields, and which rule produced that number.
 
     The priority chain is PLAN.md §7.2's, minus `manual` (a person's own
@@ -221,23 +221,23 @@ def resolve_factor(
     if presentacion is not None:
         cantidad, unidad = presentacion
         try:
-            return convert(cantidad, unidad, unidad_uso), "descripcion"
+            return convert(cantidad, unidad, unidad_base), "descripcion"
         except (UnknownUnit, ValueError):
             # A pack size in a dimension the insumo does not use (a "500 ML"
             # on something measured in grams) is not a factor -- it is a
-            # sign the insumo's unidad de uso is wrong, which is a person's
+            # sign the insumo's unidad base is wrong, which is a person's
             # call, not a conversion to force.
             pass
 
     if unidad_medida:
         try:
-            return convert(Decimal(1), unidad_medida, unidad_uso), "unidad_medida"
+            return convert(Decimal(1), unidad_medida, unidad_base), "unidad_medida"
         except (UnknownUnit, ValueError):
             pass
 
     if categoria_slug in CATEGORIAS_POR_KILO:
         try:
-            return convert(Decimal(1), "kg", unidad_uso), "default_categoria"
+            return convert(Decimal(1), "kg", unidad_base), "default_categoria"
         except (UnknownUnit, ValueError):
             pass
 

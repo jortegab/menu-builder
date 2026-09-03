@@ -27,7 +27,7 @@ def insumo(iid: int, nombre: str, unidad: str, precio: str | None, merma: str = 
     else:
         serie = [Observation(HOY, Decimal(precio), Decimal(1))]
         costo = costo_unitario(serie, Decimal(merma), "last", 90, HOY)
-    return Insumo(id=iid, nombre=nombre, unidad_uso=unidad, costo=costo)
+    return Insumo(id=iid, nombre=nombre, unidad_base=unidad, costo=costo)
 
 
 class TestCycleDetection(unittest.TestCase):
@@ -76,6 +76,56 @@ class TestCycleDetection(unittest.TestCase):
                       rendimiento_unidad="g"),
         }
         self.assertEqual(build_adjacency(recetas), {1: {2}, 2: set()})
+
+
+class TestRecipeChoosesTheUnit(unittest.TestCase):
+    """The unit belongs to the recipe line, not to the insumo.
+
+    An insumo is *costed* in one base unit (g, ml or unidad) because a cost
+    has to be per something. What a recipe measures in is a separate
+    question, answered per line: the same aceite costed per ml can be called
+    for in litres, millilitres or fluid ounces, and each converts.
+    """
+
+    def plato(self, cantidad, unidad, insumo_unidad, precio):
+        insumos = {1: insumo(1, "X", insumo_unidad, precio)}
+        recetas = {
+            1: Receta(1, "Plato", "plato", porciones=1,
+                      lineas=[Linea("insumo", 1, Decimal(str(cantidad)), unidad)])
+        }
+        return cost_recipe(1, recetas, insumos).costo_total
+
+    def test_a_ml_insumo_can_be_used_in_l_ml_and_floz(self):
+        # CRC 2 per ml.
+        self.assertEqual(self.plato(1, "l", "ml", "2"), Decimal("2000.00"))
+        self.assertEqual(self.plato(500, "ml", "ml", "2"), Decimal("1000.00"))
+        # 6 fl oz = 177.44 ml -> CRC 354.88
+        self.assertEqual(self.plato(6, "floz", "ml", "2"), Decimal("354.88"))
+
+    def test_a_g_insumo_can_be_used_in_kg_g_lb_and_oz(self):
+        # CRC 4 per g.
+        self.assertEqual(self.plato("0.18", "kg", "g", "4"), Decimal("720.00"))
+        self.assertEqual(self.plato(180, "g", "g", "4"), Decimal("720.00"))
+        self.assertEqual(self.plato(1, "lb", "g", "4"), Decimal("1814.37"))
+        self.assertEqual(self.plato(8, "oz", "g", "4"), Decimal("907.18"))
+
+    def test_the_same_insumo_in_two_units_in_one_recipe(self):
+        # Nothing stops a recipe using kg on one line and g on another;
+        # both resolve against the same per-gram cost.
+        insumos = {1: insumo(1, "Harina", "g", "2")}
+        recetas = {
+            1: Receta(1, "Pan", "plato", porciones=1, lineas=[
+                Linea("insumo", 1, Decimal(1), "kg", orden=0),
+                Linea("insumo", 1, Decimal(250), "g", orden=1),
+            ])
+        }
+        self.assertEqual(cost_recipe(1, recetas, insumos).costo_total, Decimal("2500.00"))
+
+    def test_a_volume_unit_on_a_mass_insumo_is_still_refused(self):
+        # Free choice within the dimension; never across it. "6 floz de
+        # harina" needs a density, which non-negotiable #6 refuses to invent.
+        with self.assertRaises(IncompatibleUnits):
+            self.plato(6, "floz", "g", "4")
 
 
 class TestRecipeCost(unittest.TestCase):

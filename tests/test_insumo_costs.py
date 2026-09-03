@@ -31,7 +31,7 @@ HOY = dt.date(2026, 9, 2)
 class CostsTestCase(DbTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_uso="g")
+        self.insumo = insumos_svc.create(self.db, nombre="Pechuga deshuesada", unidad_base="g")
         self._n = 0
 
     def fuente(self, *, factor="1000", status="confirmed", activo=True, precios=(), dias=(0,)):
@@ -132,7 +132,7 @@ class TestConfig(CostsTestCase):
     def test_uses_the_insumos_own_method_and_window(self):
         self.fuente(precios=("2000", "4000", "9000"), dias=(1, 2, 3))
         insumos_svc.update(
-            self.db, self.insumo, nombre="Pechuga deshuesada", unidad_uso="g",
+            self.db, self.insumo, nombre="Pechuga deshuesada", unidad_base="g",
             metodo_costeo="max_window", ventana_dias="90",
         )
         exp = costs.explicar(self.db, self.insumo, hoy=HOY)
@@ -148,7 +148,7 @@ class TestConfig(CostsTestCase):
     def test_merma_raises_the_cost(self):
         self.fuente(precios=("4000",), dias=(1,))
         insumos_svc.update(
-            self.db, self.insumo, nombre="Pechuga deshuesada", unidad_uso="g", merma_pct="20",
+            self.db, self.insumo, nombre="Pechuga deshuesada", unidad_base="g", merma_pct="20",
         )
         exp = costs.explicar(self.db, self.insumo, hoy=HOY)
         self.assertEqual(exp.costo.valor, Decimal(5))  # 4 / 0.8
@@ -180,7 +180,7 @@ class TestExplicacion(CostsTestCase):
         self.assertTrue(obs.clave)
         self.assertEqual(obs.precio_normalizado, Decimal(4000))
         self.assertEqual(obs.factor, Decimal(1000))
-        self.assertEqual(obs.precio_por_unidad_uso, Decimal(4))
+        self.assertEqual(obs.precio_por_unidad_base, Decimal(4))
 
     def test_observations_are_newest_first(self):
         self.fuente(precios=("1000", "2000", "3000"), dias=(30, 1, 15))
@@ -189,7 +189,7 @@ class TestExplicacion(CostsTestCase):
 
     def test_costos_batches_a_list(self):
         self.fuente(precios=("4000",), dias=(1,))
-        otro = insumos_svc.create(self.db, nombre="Sal", unidad_uso="g")
+        otro = insumos_svc.create(self.db, nombre="Sal", unidad_base="g")
         result = costs.costos(self.db, [self.insumo, otro], hoy=HOY)
         self.assertEqual(result[self.insumo.id].valor, Decimal(4))
         self.assertIsNone(result[otro.id].valor)

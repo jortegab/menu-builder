@@ -7,7 +7,7 @@
    hold data that exists only here.
 2. **Insumos** -- the canonical, cross-supplier ingredient layer upstream
    designed (its PLAN.md §5.3) and deliberately never built, plus the
-   things a supplier's product row cannot know: unidad de uso, merma, and
+   things a supplier's product row cannot know: unidad base, merma, and
    which price to believe.
 3. **Recetas** -- preparaciones and platos in one table (D8), and their
    lines, which form a DAG.
@@ -177,7 +177,7 @@ class Insumo(Base):
     """What the kitchen uses, as opposed to what a supplier sells.
 
     Carries the three judgments a supplier's product row cannot make:
-    `unidad_uso` (what the kitchen measures it in), `merma_pct` (how much
+    `unidad_base` (what the kitchen measures it in), `merma_pct` (how much
     is lost preparing it), and `metodo_costeo`/`ventana_dias` (which price
     to believe). All three live here rather than on a recipe line because
     all three are properties of the purchased good, not of a dish -- six
@@ -191,7 +191,7 @@ class Insumo(Base):
     slug: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     categoria_slug: Mapped[str | None] = mapped_column(String(60), index=True)
 
-    unidad_uso: Mapped[str] = mapped_column(String(10))  # g | ml | unidad
+    unidad_base: Mapped[str] = mapped_column(String(10))  # g | ml | unidad
     # Shipped from day one and unused in Phase 1 (D11): converting ml of
     # aceite to g needs a real number nobody should invent, so until this is
     # populated a cross-dimension conversion is refused, not guessed.
@@ -238,7 +238,7 @@ class InsumoFuente(Base):
         ForeignKey("catalog_product.id"), index=True
     )
 
-    # How many `Insumo.unidad_uso` one `CatalogProduct.unidad_comercial_base`
+    # How many `Insumo.unidad_base` one `CatalogProduct.unidad_comercial_base`
     # yields -- 5000 for a 5 kg package costed in grams. NULL while
     # `factor_origen` is 'sin_resolver', and a NULL factor never contributes
     # to a price series: it is a queue item, not a zero (§7.2).

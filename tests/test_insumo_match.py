@@ -102,7 +102,7 @@ class TestParsePresentacion(unittest.TestCase):
 class TestResolveFactor(unittest.TestCase):
     def test_description_wins(self):
         factor, origen = m.resolve_factor(
-            descripcion="PECHUGA DESHUESADA 1/5KG", unidad_uso="g",
+            descripcion="PECHUGA DESHUESADA 1/5KG", unidad_base="g",
             unidad_medida="Unid", categoria_slug="insumos_pollo",
         )
         self.assertEqual(factor, Decimal(5000))
@@ -110,7 +110,7 @@ class TestResolveFactor(unittest.TestCase):
 
     def test_falls_back_to_the_xml_unit(self):
         factor, origen = m.resolve_factor(
-            descripcion="PECHUGA DESHUESADA", unidad_uso="g", unidad_medida="Kg",
+            descripcion="PECHUGA DESHUESADA", unidad_base="g", unidad_medida="Kg",
         )
         self.assertEqual(factor, Decimal(1000))
         self.assertEqual(origen, "unidad_medida")
@@ -118,7 +118,7 @@ class TestResolveFactor(unittest.TestCase):
     def test_falls_back_to_the_category_default(self):
         # The operator's own rule: meats, chicken and seafood are in kg.
         factor, origen = m.resolve_factor(
-            descripcion="POSTA CERDO", unidad_uso="g",
+            descripcion="POSTA CERDO", unidad_base="g",
             unidad_medida="Unid", categoria_slug="insumos_cerdo",
         )
         self.assertEqual(factor, Decimal(1000))
@@ -128,7 +128,7 @@ class TestResolveFactor(unittest.TestCase):
         # A None factor keeps the fuente unusable and in the queue. A 1
         # would silently cost the insumo per package.
         factor, origen = m.resolve_factor(
-            descripcion="TORTILLA PEQUENA BLANCA", unidad_uso="g",
+            descripcion="TORTILLA PEQUENA BLANCA", unidad_base="g",
             unidad_medida="Otros", categoria_slug="insumos_abarrotes",
         )
         self.assertIsNone(factor)
@@ -137,19 +137,19 @@ class TestResolveFactor(unittest.TestCase):
     def test_a_pack_size_in_the_wrong_dimension_does_not_force_a_conversion(self):
         # "500 ML" on something measured in grams means the unidad de uso is
         # probably wrong -- a person's call, not a conversion to invent.
-        factor, origen = m.resolve_factor(descripcion="SALSA 1/500 ML", unidad_uso="g")
+        factor, origen = m.resolve_factor(descripcion="SALSA 1/500 ML", unidad_base="g")
         self.assertIsNone(factor)
         self.assertEqual(origen, "sin_resolver")
 
     def test_category_default_does_not_apply_to_volume(self):
         factor, origen = m.resolve_factor(
-            descripcion="ACEITE", unidad_uso="ml", categoria_slug="insumos_carnes"
+            descripcion="ACEITE", unidad_base="ml", categoria_slug="insumos_carnes"
         )
         self.assertIsNone(factor)
         self.assertEqual(origen, "sin_resolver")
 
     def test_ounces_convert(self):
-        factor, _ = m.resolve_factor(descripcion="ALCAPARRAS 1/16OZ", unidad_uso="g")
+        factor, _ = m.resolve_factor(descripcion="ALCAPARRAS 1/16OZ", unidad_base="g")
         self.assertEqual(factor, Decimal("28.349523125") * 16)
 
 

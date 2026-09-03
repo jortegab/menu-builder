@@ -65,14 +65,14 @@ class Observation:
     """One purchase of one producto, already converted to price-per-
     unidad-de-uso by its fuente's `factor_conversion`.
 
-    `cantidad_unidad_uso` is that purchase's quantity in the same unit --
+    `cantidad_unidad_base` is that purchase's quantity in the same unit --
     needed only by `weighted_avg_window`, but carried on every observation
     so the series does not have to be rebuilt when the method changes.
     """
 
     fecha: dt.date
-    precio_por_unidad_uso: Decimal
-    cantidad_unidad_uso: Decimal
+    precio_por_unidad_base: Decimal
+    cantidad_unidad_base: Decimal
     fuente_id: int | None = None
     catalog_price_point_id: int | None = None
 
@@ -110,7 +110,7 @@ def _reduce(serie: list[Observation], metodo: str) -> Decimal:
     """The method applied to a non-empty series. `last` is resolved by the
     caller (it ignores the window), so this only ever sees the aggregates.
     """
-    precios = [o.precio_por_unidad_uso for o in serie]
+    precios = [o.precio_por_unidad_base for o in serie]
     if metodo == "avg_window":
         return sum(precios, Decimal(0)) / Decimal(len(precios))
     if metodo == "median_window":
@@ -120,7 +120,7 @@ def _reduce(serie: list[Observation], metodo: str) -> Decimal:
     if metodo == "min_window":
         return min(precios)
     if metodo == "weighted_avg_window":
-        peso_total = sum((o.cantidad_unidad_uso for o in serie), Decimal(0))
+        peso_total = sum((o.cantidad_unidad_base for o in serie), Decimal(0))
         # A series whose quantities are all zero or missing is not a
         # weighting failure worth surfacing to the operator -- it degrades
         # to the plain mean, which is what a weighted mean of equal weights
@@ -128,7 +128,7 @@ def _reduce(serie: list[Observation], metodo: str) -> Decimal:
         if peso_total <= 0:
             return sum(precios, Decimal(0)) / Decimal(len(precios))
         return (
-            sum((o.precio_por_unidad_uso * o.cantidad_unidad_uso for o in serie), Decimal(0))
+            sum((o.precio_por_unidad_base * o.cantidad_unidad_base for o in serie), Decimal(0))
             / peso_total
         )
     raise ValueError(f"Método de costeo desconocido: {metodo!r}")
@@ -140,7 +140,7 @@ def price_from_series(
     ventana_dias: int = DEFAULT_WINDOW_DAYS,
     hoy: dt.date | None = None,
 ) -> CostResult:
-    """Reduce a price series to one price per unidad de uso, before merma.
+    """Reduce a price series to one price per unidad base, before merma.
 
     `serie` is every observation from every confirmed, active fuente of one
     insumo -- the union across suppliers, not one supplier's history. That
@@ -167,7 +167,7 @@ def price_from_series(
     if metodo == "last":
         ultima = ordenada[-1]
         return CostResult(
-            valor=ultima.precio_por_unidad_uso,
+            valor=ultima.precio_por_unidad_base,
             metodo=metodo,
             ventana_dias=ventana_dias,
             observaciones_usadas=1,
@@ -194,7 +194,7 @@ def price_from_series(
     # a fact about the ingredient, not a reason to refuse to cost the menu.
     ultima = ordenada[-1]
     return CostResult(
-        valor=ultima.precio_por_unidad_uso,
+        valor=ultima.precio_por_unidad_base,
         metodo=metodo,
         ventana_dias=ventana_dias,
         observaciones_usadas=1,
@@ -207,7 +207,7 @@ def price_from_series(
 def apply_merma(resultado: CostResult, merma_pct: Decimal) -> CostResult:
     """Spread a purchased price over the fraction that survives preparation.
 
-        costo_por_unidad_uso = precio / (1 - merma_pct/100)
+        costo_por_unidad_base = precio / (1 - merma_pct/100)
 
     Buy pechuga at ₡4 000/kg with 12% merma and the kitchen's real cost is
     ₡4 545 per usable kg. A `None` cost stays `None` -- merma on no price

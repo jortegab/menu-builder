@@ -1,9 +1,9 @@
 # Menu Builder — Design Plan
 
-**Status:** Phase 0 (this document + repo skeleton). Nothing is built yet.
-Phase 1 is fully designed below; Phases 2 and 3 are outlined deliberately
-short — they are real commitments about *direction*, not finished designs,
-and each needs its own conversation before it is built.
+**Status:** Phase 1, step 1.5. Steps 1.0-1.4 are built and verified
+against live data (see §11); `receta`/`receta_linea` and the builder screen
+are next. Phases 2 and 3 stay outlined deliberately short — they are real
+commitments about *direction*, not finished designs.
 
 **Companion app:** `restaurant-manager`, the same operator's
 e-invoice-driven management suite for the same single restaurant in Costa
@@ -163,7 +163,7 @@ is worse than an error.
      |    |             ^                                       |
      |    |             +--- llm_insumo (suggestions only)       |
      |    v                                                     |
-     |  costing engine (pure) --> costo por unidad de uso        |
+     |  costing engine (pure) --> costo por unidad base        |
      |    |                                                     |
      |    v                                                     |
      |  receta / receta_linea (DAG) --> costo del plato          |
@@ -441,13 +441,44 @@ Three dimensions, and conversion happens **only within one**:
 
 | dimension | canonical | accepted |
 |---|---|---|
-| masa | `g` | `mg`, `g`, `kg` |
-| volumen | `ml` | `ml`, `l` |
+| masa | `g` | `mg`, `g`, `kg`, `oz`, `lb` |
+| volumen | `ml` | `ml`, `l`, `gal`, `floz` |
 | conteo | `unidad` | `unidad` |
 
 `unidad` converts to nothing. A recipe line whose unit is not compatible
 with its component's own unit is a **validation error at save time**, not a
 silent coercion — and the error names both units.
+
+**`oz` is mass and `floz` is volume, and they are separate units on
+purpose.** A fluid ounce is 29.57 ml; an ounce is 28.35 g. Folding them
+into one "oz" would make *6 oz de aceite* silently mean a mass, cost it
+against a volume-based insumo, and be wrong twice — once by ~4%, and once
+by the whole density question non-negotiable #6 exists to refuse.
+
+### 7.1.1 The unit belongs to the recipe line, not to the insumo (D30)
+
+An insumo is **costed** in one base unit — `g`, `ml` or `unidad`, the
+canonical unit of its dimension — because a cost has to be per *something*,
+and per-gram is the form that never needs a fraction. Everything is stored
+that way: never per kg, never per litre.
+
+**What a recipe measures in is a separate question, answered per line.**
+The same aceite costed per ml can be called for in litres, millilitres or
+fluid ounces; the same pechuga costed per gram in kilos, grams, pounds or
+ounces. Each line carries its own unit and converts on the way into the
+cost (`graph.cost_recipe`). One recipe may legitimately use `kg` on one
+line and `g` on another for the same insumo.
+
+The freedom is **within the dimension only**. `6 floz` of an insumo costed
+per gram is still refused, because that needs a density nobody has
+recorded — the one thing this design does not bend.
+
+This was originally modelled the other way round: `Insumo.unidad_uso`, "the
+unit the kitchen measures it in", which read as though every recipe using
+pechuga had to write grams. Renamed `unidad_base` and reframed on
+2026-09-02 (operator's call). The storage did not change — the field always
+held a canonical unit — but the name was making a promise about recipes
+that the costing engine never actually imposed.
 
 **Density is deferred, not forgotten.** Converting `ml` of aceite to `g`
 needs a per-insumo `densidad_g_por_ml`, which is a real field with a real
@@ -458,16 +489,16 @@ refused (non-negotiable #6).
 ### 7.2 `factor_conversion` — from a purchase unit to a use unit
 
 Each `insumo_fuente` carries **`factor_conversion`: how many
-`unidad_uso` one `unidad_comercial_base` of that producto yields.**
+`unidad_base` one `unidad_comercial_base` of that producto yields.**
 
 > Buy *pechuga deshuesada* in packages the invoice describes as `1/5kg`;
-> use it in grams. `unidad_comercial_base` is the package, `unidad_uso` is
+> use it in grams. `unidad_comercial_base` is the package, `unidad_base` is
 > `g`, `factor_conversion` is **5000**.
 
 So the price of one unit of use, before merma:
 
 ```
-precio_por_unidad_uso = precio_efectivo_normalizado_crc / factor_conversion
+precio_por_unidad_base = precio_efectivo_normalizado_crc / factor_conversion
 ```
 
 It is defined against `unidad_comercial_base` and not against the invoice's
@@ -516,7 +547,7 @@ plate — bone, skin, trim, peel. Purchased cost is spread over what actually
 survives:
 
 ```
-costo_por_unidad_uso = precio_por_unidad_uso / (1 - merma_pct/100)
+costo_por_unidad_base = precio_por_unidad_base / (1 - merma_pct/100)
 ```
 
 Buy chicken at ₡4 000/kg with 12% merma and the kitchen's real cost is
@@ -534,7 +565,7 @@ same reduction double-counts it. Each surface names which one it is showing.
 
 For an insumo, the **price series** is the union over all `confirmed`,
 `activo` fuentes of every observation in the mirror, each converted to
-`precio_por_unidad_uso` by that fuente's own factor, sorted by `fecha`.
+`precio_por_unidad_base` by that fuente's own factor, sorted by `fecha`.
 Observations with a `null` `precio_efectivo_crc` are dropped and counted.
 
 The method reduces that series to one number:
@@ -605,7 +636,7 @@ For a receta `R` with lines `L`:
 costo_total(R) = Σ_L  cantidad_L (converted to the component's unit)
                       × costo_unitario(component_L)
 
-costo_unitario(insumo)      = §7.3's costo_por_unidad_uso
+costo_unitario(insumo)      = §7.3's costo_por_unidad_base
 costo_unitario(preparación) = costo_total(P) / rendimiento_cantidad(P)
 
 costo_por_porcion(plato)    = costo_total(R) / porciones(R)
@@ -667,7 +698,7 @@ and safe: **an accelerator, never a dependency.**
 
 1. **Grouping** — given a producto's description and the list of existing
    insumos, either pick one or propose a new canonical name.
-2. **Extraction** — read `unidad_uso` and pack size out of the description
+2. **Extraction** — read `unidad_base` and pack size out of the description
    (`1/5kg`, `CJ 24x350ML`, `BOLSA 2.5 KG`) to seed `factor_conversion`.
 
 **The rules, inherited:**
@@ -748,7 +779,7 @@ D3.
 ### 9.2 Insumos
 
 - **`insumo`** — `id`, `nombre`, `slug` (unique), `categoria_slug`,
-  `unidad_uso` (`g`|`ml`|`unidad`), `densidad_g_por_ml` (nullable, unused
+  `unidad_base` (`g`|`ml`|`unidad`), `densidad_g_por_ml` (nullable, unused
   in Phase 1), `merma_pct` (default 0), `metodo_costeo` (nullable → app
   default), `ventana_dias` (nullable → app default), `notas`, `activo`,
   `created_at`, `updated_at`
@@ -807,7 +838,7 @@ Sidebar, in this order:
 - **Preparaciones** (`/preparaciones`) — sub-recipes, with a "usada en N
   recetas" column that is a link, because the first question about a salsa
   is always what breaks if you change it.
-- **Insumos** (`/insumos`) — the canonical list: unidad de uso, merma,
+- **Insumos** (`/insumos`) — the canonical list: unidad base, merma,
   método, current cost, source count, last purchase.
   - **Mapeo** (`/insumos/mapeo`) — the queue. Carries a count badge; it is
     the only nav item that ever nags.
@@ -856,7 +887,7 @@ The screen everything else exists to serve. Three regions:
 ### 10.2 `/insumos/{id}`
 
 Fuentes (each with supplier, description, factor, `factor_origen` badge, an
-activo toggle), the configuration fields (unidad de uso, merma, método,
+activo toggle), the configuration fields (unidad base, merma, método,
 ventana), the histórico card in upstream's shape, "¿Por qué este costo?"
 inline, and "usado en N recetas" as a link.
 
@@ -877,7 +908,7 @@ is green.
 |---|---|---|
 | 1.0 | ~~**`/api/v1` in `restaurant-manager`**~~ — **done 2026-09-02** (upstream 0.75, `56653c8`): six GET endpoints, 27 tests, upstream D28/D29, verified against the live catalog | ✅ endpoints return real rows from the live DB |
 | 1.1 | ~~`catalog_sync` + mirror tables + Ajustes sync panel~~ — **done 2026-09-02**: 1 420 productos and 17 645 compras mirrored from the live API in 46 s; incremental re-sync 2 s | ✅ full catalog and price history mirrored; re-sync idempotent |
-| 1.2 | ~~Insumo CRUD, unidad de uso, merma, método/ventana~~ — **done 2026-09-02** | ✅ an insumo can be created and configured by hand end to end |
+| 1.2 | ~~Insumo CRUD, unidad base, merma, método/ventana~~ — **done 2026-09-02** | ✅ an insumo can be created and configured by hand end to end |
 | 1.3 | ~~Mapping queue + LLM suggestion + deterministic fallback~~ — **done 2026-09-02** | ✅ the real catalog is drainable into insumos in one sitting |
 | 1.4 | ~~Costing engine wired to real data + "¿Por qué este costo?"~~ — **done 2026-09-02** | ✅ verified: app said ₡4.36/g, hand-computed SQL median said 4.3632 |
 | 1.5 | `receta` / `receta_linea`, preparaciones, cycle guard | a salsa can be built and reused by two platos |
@@ -1282,4 +1313,6 @@ archaeology problem.
 | D27 | Four fixed roles (`admin`, `contabilidad`, `cocina`, `consulta`), no permission matrix | Roles map to jobs, not screens. Per-module permissions, custom roles, invitations, SSO and MFA are all tenancy-shaped features, and D24 says there is no tenancy | 2026-09-02 | Proposed |
 | D28 | Auth ships **in the same commit** as the `0.0.0.0` bind, never after | Today the only thing protecting either app is being unreachable from the network. The bind change is what turns "no auth" from a simplification into an open door onto the restaurant's LAN, so the two are one change | 2026-09-02 | Confirmed |
 | D29 | Leave room for an actor now: never collapse "a human did this" into a boolean | The only free precaution multi-user needs in Phase 1. Adding a nullable `..._by_user_id` later is a column and a `NULL` backfill; recovering *who* from a design that stored only `True` is archaeology | 2026-09-02 | Confirmed |
+| D30 | An insumo is **costed** in a canonical base unit (`g`/`ml`/`unidad`), and the **recipe line chooses its own unit** and converts | A cost has to be per something, and per-gram never needs a fraction — but nothing about that should force a recipe to write grams. An aceite costed per ml can be called for in L, ml or fl oz; a pechuga costed per gram in kg, g, lb or oz, and two lines of one recipe may differ. Freedom within the dimension only: crossing mass and volume still needs a density (non-negotiable #6). Supersedes the original `Insumo.unidad_uso` framing, which read as "the unit the kitchen must measure in" — the storage was always canonical, but the name promised something about recipes that the costing engine never imposed. Renamed `unidad_base`, live column altered by hand (no Alembic, D15) | 2026-09-02 | Confirmed |
+| D31 | `oz` (mass, 28.35 g) and `floz` (volume, 29.57 ml) are separate units | Folding them would make "6 oz de aceite" silently mean a mass, cost it against a volume-based insumo, and be wrong both by ~4% and by the dimension. The catalog already uses both senses | 2026-09-02 | Confirmed |
 | D21 | Phase 2 strips an all-in menu price with **one constant, `/1.23`** — every price is set as base + 13% IVA + 10% servicio, both on the base | Operator's own pricing rule, verified against 620 days: IVA is exactly 13.00% of `subtotal − descuento` on 617 of them and never above, while IVA ÷ (subtotal + servicio) is 11.86% — so servicio is not in the IVA base and the divisor is 1.23, not 1.243. **Supersedes this row's first draft**, which called for per-plato `lleva_servicio`/`iva_pct` flags: that was inferred from aggregate ratios below 10%/13%, and the gap is the sales mix (takeout carries no servicio), not the pricing rule. Corollary: never apply `/1.23` to aggregate sales — servicio there ranges 6.24-10.00% of subtotal daily; use the file's own `Subtotal − Descuento` | 2026-09-02 | Confirmed (revised same day) |

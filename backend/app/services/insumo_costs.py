@@ -57,7 +57,7 @@ class ObservacionVista:
     clave: str
     precio_normalizado: Decimal
     factor: Decimal
-    precio_por_unidad_uso: Decimal
+    precio_por_unidad_base: Decimal
     en_ventana: bool
 
 
@@ -158,8 +158,8 @@ def explicar(
                 serie.append(
                     Observation(
                         fecha=punto.fecha,
-                        precio_por_unidad_uso=precio_uso,
-                        cantidad_unidad_uso=(punto.cantidad or Decimal(0)) * factor,
+                        precio_por_unidad_base=precio_uso,
+                        cantidad_unidad_base=(punto.cantidad or Decimal(0)) * factor,
                         fuente_id=fuente.id,
                         catalog_price_point_id=punto.id,
                     )
@@ -172,7 +172,7 @@ def explicar(
                         clave=punto.clave,
                         precio_normalizado=precio_base,
                         factor=factor,
-                        precio_por_unidad_uso=precio_uso,
+                        precio_por_unidad_base=precio_uso,
                         en_ventana=punto.fecha >= desde,
                     )
                 )

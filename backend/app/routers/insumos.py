@@ -62,7 +62,7 @@ def nuevo(request: Request, db: Session = Depends(get_db)):
         "insumos/form.html",
         {
             "insumo": None,
-            "valores": {"unidad_uso": "g", "merma_pct": "0"},
+            "valores": {"unidad_base": "g", "merma_pct": "0"},
             "errors": {},
             "categorias": svc.categorias_disponibles(db),
             **_defaults(),
@@ -75,7 +75,7 @@ def crear(
     request: Request,
     db: Session = Depends(get_db),
     nombre: str = Form(""),
-    unidad_uso: str = Form(""),
+    unidad_base: str = Form(""),
     merma_pct: str = Form(""),
     metodo_costeo: str = Form(""),
     ventana_dias: str = Form(""),
@@ -83,7 +83,7 @@ def crear(
     notas: str = Form(""),
 ):
     form = dict(
-        nombre=nombre, unidad_uso=unidad_uso, merma_pct=merma_pct,
+        nombre=nombre, unidad_base=unidad_base, merma_pct=merma_pct,
         metodo_costeo=metodo_costeo, ventana_dias=ventana_dias,
         categoria_slug=categoria_slug, notas=notas,
     )
@@ -135,7 +135,7 @@ def editar(insumo_id: int, request: Request, db: Session = Depends(get_db)):
             "insumo": insumo,
             "valores": {
                 "nombre": insumo.nombre,
-                "unidad_uso": insumo.unidad_uso,
+                "unidad_base": insumo.unidad_base,
                 "merma_pct": str(insumo.merma_pct or 0),
                 "metodo_costeo": insumo.metodo_costeo or "",
                 "ventana_dias": str(insumo.ventana_dias or ""),
@@ -155,7 +155,7 @@ def actualizar(
     request: Request,
     db: Session = Depends(get_db),
     nombre: str = Form(""),
-    unidad_uso: str = Form(""),
+    unidad_base: str = Form(""),
     merma_pct: str = Form(""),
     metodo_costeo: str = Form(""),
     ventana_dias: str = Form(""),
@@ -166,7 +166,7 @@ def actualizar(
     if insumo is None:
         return RedirectResponse("/insumos", status_code=303)
     form = dict(
-        nombre=nombre, unidad_uso=unidad_uso, merma_pct=merma_pct,
+        nombre=nombre, unidad_base=unidad_base, merma_pct=merma_pct,
         metodo_costeo=metodo_costeo, ventana_dias=ventana_dias,
         categoria_slug=categoria_slug, notas=notas,
     )

@@ -32,10 +32,10 @@ from .units import CANONICAL
 
 # What a recipe can actually measure in. A subset of `units._UNITS`: an
 # insumo is *used* in the canonical unit of its dimension, and a recipe line
-# converts into it (§7.1). Offering "kg" as a unidad de uso would work
+# converts into it (§7.1). Offering "kg" as a unidad base would work
 # arithmetically and then read badly on every recipe -- 0.18 kg of pechuga
 # rather than 180 g.
-UNIDADES_USO = tuple(CANONICAL.values())  # ("g", "ml", "unidad")
+UNIDADES_BASE = tuple(CANONICAL.values())  # ("g", "ml", "unidad")
 
 MAX_VENTANA_DIAS = 3650  # ten years; past this it is a typo, not a window
 
@@ -102,7 +102,7 @@ def _parse_decimal(raw: str) -> Decimal | None:
 def validate(
     *,
     nombre: str,
-    unidad_uso: str,
+    unidad_base: str,
     merma_pct: str = "",
     metodo_costeo: str = "",
     ventana_dias: str = "",
@@ -125,8 +125,8 @@ def validate(
     elif len(nombre) > 200:
         errors["nombre"] = "El nombre no puede pasar de 200 caracteres."
 
-    if unidad_uso not in UNIDADES_USO:
-        errors["unidad_uso"] = "Elegí una unidad de uso."
+    if unidad_base not in UNIDADES_BASE:
+        errors["unidad_base"] = "Elegí una unidad base."
 
     merma = Decimal(0)
     try:
@@ -139,7 +139,7 @@ def validate(
             # astronomically expensive plate that still looks like a number.
             errors["merma_pct"] = (
                 f"La merma tiene que ser menor a {MAX_MERMA_PCT}%. "
-                "Si de verdad se pierde casi todo, revisá la unidad de uso."
+                "Si de verdad se pierde casi todo, revisá la unidad base."
             )
     except ValueError:
         errors["merma_pct"] = "La merma tiene que ser un número, por ejemplo 12 o 12,5."
@@ -168,7 +168,7 @@ def validate(
 
     return {
         "nombre": nombre,
-        "unidad_uso": unidad_uso,
+        "unidad_base": unidad_base,
         "merma_pct": merma,
         "metodo_costeo": metodo,
         "ventana_dias": ventana,

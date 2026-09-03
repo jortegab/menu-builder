@@ -9,7 +9,7 @@ e-invoice ingestion app, over a read-only JSON API. This app never
 recomputes upstream's price math and never writes to it.
 
 **Read `PLAN.md` before proposing architecture.** It has the full design,
-29 numbered decisions with rationale, 8 non-negotiables, and the open
+31 numbered decisions with rationale, 8 non-negotiables, and the open
 questions. Do not redesign what is already decided there — if you think a
 decision is wrong, say so and argue it, but do not silently deviate.
 
@@ -41,7 +41,7 @@ Two things it confirmed that matter for the next step:
 - **Money arrives as a string** (`"1039.6040"`), never a JSON number. Parse
   it with `Decimal(...)`, never `float(...)`.
 
-**Steps 1.0 and 1.1 are done** (2026-09-02). `services/catalog_client.py` (network)
+**Step 1.1 is done too** (2026-09-02). `services/catalog_client.py` (network)
 and `services/catalog_sync.py` (DB) fill the mirror, with `/ajustes` as the
 control panel. Proven against the live API: **1 420 productos and 17 645
 compras in 46 s**, incremental re-sync in ~2 s, zero null CRC prices across
@@ -74,9 +74,11 @@ form re-renders with what they typed still in it.
 
 Three rules worth knowing before touching that module:
 
-- **`unidad_uso` is only `g`/`ml`/`unidad`** — the canonical unit of each
-  dimension. `kg` would work arithmetically and read badly on every recipe
-  (0.18 kg of pechuga), so it is not offered.
+- **`unidad_base` is only `g`/`ml`/`unidad`** — the canonical unit of each
+  dimension, and it is *how the cost is stored*, not what recipes must
+  write. See D30 below; this field was called `unidad_uso` until
+  2026-09-02 and the old name was making a promise about recipes that the
+  costing engine never imposed.
 - **A comma is a valid decimal separator.** Costa Rica writes `12,5`; a
   form that rejects it is a form fighting its user.
 - **`metodo_costeo`/`ventana_dias` NULL means "follow the app default"**,
@@ -138,7 +140,6 @@ insumo fed by four suppliers, and the hand-written SQL median over the same
 guard on write. `graph.py` already has the traversal and cycle detection,
 unused so far.
 
-este costo?".
 
 
 Do not describe unbuilt features as working, in the UI or in the docs.
@@ -207,7 +208,7 @@ backend/app/
                     /insumos/{insumo_id} captures it and 422s
     recetas.py      Phase 0 stub
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
-PLAN.md             the design. 29 decisions, 8 non-negotiables
+PLAN.md             the design. 31 decisions, 8 non-negotiables
 ```
 
 **`units.py`, `costing.py` and `graph.py` are pure on purpose** — no DB, no
@@ -297,6 +298,17 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
   CJ-case vs BOT-bottle problem). Getting this backwards makes every
   case-bought insumo wrong by the case size, silently. It is `PLAN.md`
   §14's first named risk.
+- **The unit belongs to the recipe line, not to the insumo** (D30).
+  `Insumo.unidad_base` is `g`/`ml`/`unidad` and says only how the cost is
+  *stored*. A `receta_linea` may ask for any unit in the same dimension —
+  kg, g, lb, oz for mass; L, ml, gal, fl oz for volume — and
+  `graph.cost_recipe` converts it. Two lines of one recipe may use
+  different units for the same insumo. Do not "simplify" this by forcing
+  recipe lines into the base unit; that was the original design and it was
+  wrong.
+- **`oz` is mass, `floz` is volume** (D31). Never fold them together: a
+  fluid ounce is 29.57 ml and an ounce is 28.35 g, so "6 oz de aceite"
+  would silently become a mass costed against a volume insumo.
 - **Merma and rendimiento are different losses and must never be applied to
   the same one.** Merma is loss on the purchased insumo *before* it enters
   a recipe (bone, trim, peel). Rendimiento is what a recipe *produces* from
@@ -337,7 +349,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 175 tests today, mostly against the
+`unittest`, no pytest, matching upstream. 180 tests today, mostly against the
 three pure modules.
 
 Coverage is deliberately weighted toward the nasty cases rather than the

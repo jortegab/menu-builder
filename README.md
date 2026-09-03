@@ -105,9 +105,23 @@ productos.
 
 El insumo carga las tres cosas que un producto no puede saber:
 
-- **Unidad de uso** — en qué mide la cocina. Se compra en paquetes de 5 kg
-  y se usa en gramos: la unidad de uso es el gramo, y el precio del paquete
-  se divide entre 5 000.
+- **Unidad base** — cómo se guarda el costo, y nada más. Todo se lleva a
+  gramos, mililitros o unidades: nunca a kilos ni a litros. Se compra en
+  paquetes de 5 kg, el precio se divide entre 5 000, y queda el costo por
+  gramo.
+
+  **Ojo con esto, porque es fácil confundirlo:** la unidad base *no* es la
+  unidad en que hay que escribir las recetas. Cada línea de receta pide lo
+  que le sirva y la conversión se hace sola — la misma pechuga se puede
+  pedir en 0,18 kg, en 180 g o en 6 oz, y el mismo aceite en 1 L, en
+  500 ml o en 6 oz líquidas. Incluso dos líneas de la misma receta pueden
+  usar unidades distintas.
+
+  Lo único que no se puede es cruzar peso con volumen: 6 oz líquidas de
+  harina no significan nada sin saber la densidad, así que el app se niega
+  en vez de inventarla. Y ojo que **«oz» de peso y «oz líquidas» son
+  unidades distintas** (28,35 g contra 29,57 ml); mezclarlas daría un
+  número creíble y equivocado.
 - **% de merma** — cuánto se pierde al preparar. Comprás pechuga a ₡4 000
   el kilo con 12% de merma y el kilo *usable* te cuesta ₡4 545. El costo se
   reparte entre lo que sobrevive, no entre lo que entró.
@@ -223,14 +237,14 @@ el método y la ventana que se usaron ese día, en la misma tarjeta que
 **Todo lo de arriba.** Lo que sí está, hoy:
 
 - El diseño completo, con sus decisiones y el porqué de cada una —
-  `PLAN.md`, 29 decisiones numeradas y 8 reglas innegociables.
+  `PLAN.md`, 31 decisiones numeradas y 8 reglas innegociables.
 - El modelo de datos (10 tablas) y el esqueleto que levanta con
   `docker compose up`.
 - **La sincronización del catálogo**, funcionando contra el app real: 1 420
   productos y 17 645 compras en 46 segundos, y unos 2 segundos cuando solo
   trae lo que cambió. Se maneja desde Ajustes.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 175
+  el recorrido del grafo de recetas y la detección de ciclos — con 180
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
   una salsa que se contiene a sí misma, unidades incompatibles).
 

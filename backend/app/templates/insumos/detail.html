@@ -22,10 +22,15 @@
 
 <div class="card">
   <h2 class="card__title">Cómo se costea</h2>
+  <p class="muted small">
+    La unidad base es cómo se guarda el costo. Las recetas piden lo que les
+    sirva (kg, g, oz para peso; L, ml, oz líquidas para volumen) y se
+    convierte solo.
+  </p>
   <div class="kpis">
     <div class="kpi">
-      <div class="kpi__label">Unidad de uso</div>
-      <div class="kpi__value kpi__value--sm">{{ UNIDAD_LABELS.get(insumo.unidad_uso, insumo.unidad_uso) }}</div>
+      <div class="kpi__label">Unidad base (costeo)</div>
+      <div class="kpi__value kpi__value--sm">{{ UNIDAD_LABELS.get(insumo.unidad_base, insumo.unidad_base) }}</div>
     </div>
     <div class="kpi">
       <div class="kpi__label">Merma</div>
@@ -50,9 +55,9 @@
   <p class="muted small">
     Con {{ insumo.merma_pct | pct }} de merma, el costo se reparte entre lo
     que sobrevive: un precio de compra de ₡1 000 por
-    {{ insumo.unidad_uso }} sale a
+    {{ insumo.unidad_base }} sale a
     {{ (1000 / (1 - (insumo.merma_pct / 100))) | money }} por
-    {{ insumo.unidad_uso }} usable.
+    {{ insumo.unidad_base }} usable.
   </p>
   {% endif %}
 </div>
@@ -62,7 +67,7 @@
   {% if exp.costo.valor is not none %}
     <div class="costo">
       <div class="costo__cifra">{{ exp.costo.valor | money }}</div>
-      <div class="costo__unidad">por {{ insumo.unidad_uso }} usable</div>
+      <div class="costo__unidad">por {{ insumo.unidad_base }} usable</div>
     </div>
     <p class="muted small">
       {{ METODO_LABELS.get(exp.metodo) }} sobre {{ exp.costo.observaciones_usadas }}
@@ -79,7 +84,7 @@
     <p class="empty">Este insumo todavía no tiene costo.</p>
     <p class="empty__hint">
       {% if not exp.fuentes %}No tiene ningún producto asociado.
-      {% elif exp.fuentes_sin_factor %}Sus fuentes no tienen factor de conversión, así que no se puede saber cuánto vale una unidad de uso.
+      {% elif exp.fuentes_sin_factor %}Sus fuentes no tienen factor de conversión, así que no se puede saber cuánto vale una unidad base.
       {% else %}Sus fuentes no tienen compras con precio en colones.{% endif %}
       Mientras siga así, cualquier receta que lo use va a quedar
       <strong>incompleta</strong> — y eso es a propósito: un cero haría que
@@ -111,7 +116,7 @@
       <tr>
         <td>{{ f.producto.description }}</td>
         <td class="muted small">{{ f.producto.supplier_nombre[:26] }}</td>
-        <td class="num">{% if f.fuente.factor_conversion %}{{ f.fuente.factor_conversion | cantidad }} {{ insumo.unidad_uso }}{% else %}—{% endif %}</td>
+        <td class="num">{% if f.fuente.factor_conversion %}{{ f.fuente.factor_conversion | cantidad }} {{ insumo.unidad_base }}{% else %}—{% endif %}</td>
         <td class="muted small">{{ f.fuente.factor_origen }}</td>
         <td class="num">{{ f.observaciones }}</td>
         <td>{% if f.usable %}<span class="pip pip--ok">en uso</span>{% else %}<span class="pip pip--warn">{{ f.motivo }}</span>{% endif %}</td>
@@ -124,7 +129,7 @@
   {% if exp.observaciones %}
   <h3 class="sub">Compras ({{ exp.observaciones | length }})</h3>
   <table class="grid">
-    <thead><tr><th>Fecha</th><th>Proveedor</th><th class="num">Precio normalizado</th><th class="num">÷ factor</th><th class="num">Por {{ insumo.unidad_uso }}</th><th></th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Proveedor</th><th class="num">Precio normalizado</th><th class="num">÷ factor</th><th class="num">Por {{ insumo.unidad_base }}</th><th></th></tr></thead>
     <tbody>
       {% for o in exp.observaciones[:40] %}
       <tr>
@@ -132,7 +137,7 @@
         <td class="muted small">{{ o.proveedor[:26] }}</td>
         <td class="num">{{ o.precio_normalizado | money }}</td>
         <td class="num muted">{{ o.factor | cantidad }}</td>
-        <td class="num">{{ o.precio_por_unidad_uso | money }}</td>
+        <td class="num">{{ o.precio_por_unidad_base | money }}</td>
         <td>{% if not o.en_ventana %}<span class="muted small">fuera de la ventana</span>{% endif %}</td>
       </tr>
       {% endfor %}

@@ -17,16 +17,21 @@
   </div>
 
   <div class="field">
-    <label for="unidad_uso">Unidad de uso</label>
-    <select class="input {% if errors.unidad_uso %}input--bad{% endif %}" id="unidad_uso" name="unidad_uso">
+    <label for="unidad_base">Unidad base</label>
+    <select class="input {% if errors.unidad_base %}input--bad{% endif %}" id="unidad_base" name="unidad_base">
       {% for value, label in UNIDAD_LABELS.items() %}
-      <option value="{{ value }}" {% if valores.unidad_uso == value %}selected{% endif %}>{{ label }}</option>
+      <option value="{{ value }}" {% if valores.unidad_base == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
-    {% if errors.unidad_uso %}<p class="field__error">{{ errors.unidad_uso }}</p>{% endif %}
+    {% if errors.unidad_base %}<p class="field__error">{{ errors.unidad_base }}</p>{% endif %}
     <p class="field__hint">
-      En qué se mide en las recetas. Se compra en paquetes de 5 kg y se usa
-      en gramos: acá va gramos.
+      <strong>Es solo cómo se guarda el costo</strong>, no cómo hay que
+      escribirlo en las recetas. Se compra en paquetes de 5 kg y acá va
+      <em>gramos</em>: el costo queda por gramo.
+      <br>
+      Después cada receta pide lo que le sirva — 0,18 kg, 180 g o 6 oz —
+      y la conversión se hace sola. Lo único que no se puede es cruzar
+      peso con volumen: para eso haría falta la densidad.
     </p>
   </div>
 

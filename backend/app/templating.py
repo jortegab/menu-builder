@@ -75,10 +75,31 @@ METODO_AYUDA = {
     "min_window": "El mejor caso reciente. Casi nunca es lo que querés.",
 }
 
+# The base units an insumo may be *costed* in -- the canonical unit of each
+# dimension, and nothing else. A cost has to be per something, and per-gram
+# is the form that never needs a fraction.
 UNIDAD_LABELS = {
     "g": "Gramos (g)",
     "ml": "Mililitros (ml)",
     "unidad": "Unidades",
+}
+
+# Every unit a *recipe line* may ask for. Deliberately a longer list than
+# UNIDAD_LABELS: the unit belongs to the line, not to the insumo, so an
+# aceite costed per ml can be called for in litres or fluid ounces and an
+# insumo costed per gram in kilos, pounds or ounces. `units.compatible_units`
+# decides which of these a given line may offer; this only names them.
+UNIDAD_NOMBRES = {
+    "mg": "mg",
+    "g": "g",
+    "kg": "kg",
+    "oz": "oz (peso)",
+    "lb": "lb",
+    "ml": "ml",
+    "l": "L",
+    "floz": "oz líquidas",
+    "gal": "galones",
+    "unidad": "unidades",
 }
 
 templates.env.filters["money"] = money
@@ -88,6 +109,7 @@ templates.env.globals["static_url"] = static_url
 templates.env.globals["METODO_LABELS"] = METODO_LABELS
 templates.env.globals["METODO_AYUDA"] = METODO_AYUDA
 templates.env.globals["UNIDAD_LABELS"] = UNIDAD_LABELS
+templates.env.globals["UNIDAD_NOMBRES"] = UNIDAD_NOMBRES
 
 
 def pendientes_mapeo(request) -> int:

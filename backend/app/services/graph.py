@@ -95,7 +95,7 @@ class Insumo:
 
     id: int
     nombre: str
-    unidad_uso: str
+    unidad_base: str
     costo: CostResult
 
 
@@ -221,7 +221,7 @@ def cost_recipe(
                 raise KeyError(f"Insumo {linea.componente_id} no encontrado")
             unitario = insumo.costo.valor
             nombre = insumo.nombre
-            unidad_componente = insumo.unidad_uso
+            unidad_componente = insumo.unidad_base
             desglose = None
         else:
             sub = cost_recipe(

@@ -15,8 +15,8 @@ HOY = dt.date(2026, 9, 2)
 def obs(dias_atras: int, precio: str, cantidad: str = "1") -> Observation:
     return Observation(
         fecha=HOY - dt.timedelta(days=dias_atras),
-        precio_por_unidad_uso=Decimal(precio),
-        cantidad_unidad_uso=Decimal(cantidad),
+        precio_por_unidad_base=Decimal(precio),
+        cantidad_unidad_base=Decimal(cantidad),
     )
 
 

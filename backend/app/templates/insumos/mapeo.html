@@ -71,8 +71,8 @@
         <input class="input" id="n{{ s.producto.id }}" name="nombre_nuevo" value="{{ s.nombre_propuesto or '' }}">
       </div>
       <div class="field field--inline">
-        <label for="u{{ s.producto.id }}">Unidad de uso</label>
-        <select class="input input--sm" id="u{{ s.producto.id }}" name="unidad_uso">
+        <label for="u{{ s.producto.id }}">Unidad base</label>
+        <select class="input input--sm" id="u{{ s.producto.id }}" name="unidad_base">
           {% for u in unidades %}
           <option value="{{ u }}" {% if u == s.unidad_sugerida %}selected{% endif %}>{{ UNIDAD_LABELS.get(u, u) }}</option>
           {% endfor %}

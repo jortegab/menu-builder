@@ -42,6 +42,14 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     # supplies but also cooking oil, which is an insumo. Exactly the kind
     # of addition PLAN.md §15 calls a cheap door: this table is a table.
     "gal": (VOLUMEN, Decimal("3785.411784")),
+    # US fluid ounce -- a *volume*, and deliberately a different unit from
+    # the mass `oz` above. They are not interchangeable and they are not
+    # even close in the way that matters: 1 fl oz of water is 29.57 ml and
+    # weighs 29.57 g, while 1 oz is 28.35 g. Folding them into one unit
+    # would make "6 oz de aceite" silently mean a mass, cost it against a
+    # volume-based insumo, and be wrong twice over -- once by ~4% and once
+    # by the whole density question non-negotiable #6 exists to refuse.
+    "floz": (VOLUMEN, Decimal("29.5735295625")),
     "unidad": (CONTEO, Decimal(1)),
 }
 
@@ -99,6 +107,16 @@ def normalize_unit(unit: str) -> str:
         "onza": "oz",
         "onzas": "oz",
         "ozs": "oz",
+        # Fluid ounces, spelled the several ways a kitchen writes them.
+        # "oz" alone stays *mass*: it is the commoner meaning on an invoice,
+        # and a line that means the volume has to say so.
+        "floz": "floz",
+        "flozs": "floz",
+        "fl": "floz",
+        "onzafluida": "floz",
+        "onzalicuida": "floz",
+        "onzaliquida": "floz",
+        "onzasliquidas": "floz",
         "libra": "lb",
         "libras": "lb",
         "lbs": "lb",
