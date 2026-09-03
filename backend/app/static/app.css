@@ -214,3 +214,24 @@ select.input--xs { width: auto; }
 
 .aviso--alert { color: var(--alert); background: var(--alert-soft); border: 1px solid var(--alert); }
 .radios { display: flex; flex-direction: column; gap: 6px; }
+
+/* --- histórico de costo (PLAN.md §7.7) -------------------------------- */
+/* An inline SVG the server rendered, in restaurant-manager's own shape --
+   no charting library, because a line and six numbers do not justify
+   200 kB of vendored JavaScript, and an <svg> works with no client code at
+   all. `height:auto` and never a fixed CSS height: a fixed one would force
+   preserveAspectRatio="none" and stretch the point circles into ellipses. */
+.cost-chart { width: 100%; height: auto; display: block; margin: 10px 0 6px; }
+.cost-chart__line { fill: none; stroke: var(--teal); stroke-width: 2; }
+/* Backfilled stretches, drawn so a mostly-estimated chart cannot be
+   mistaken for a mostly-observed one. */
+.cost-chart__line.es-estimado { stroke-dasharray: 5 4; opacity: .65; }
+.cost-chart__pt { fill: var(--teal); }
+.cost-chart__pt--estimado { fill: var(--surface); stroke: var(--teal); stroke-width: 1.5; }
+.cost-chart__label { font-size: 10px; fill: var(--ink-soft); }
+
+/* Direction on a cost, not a severity tier: up is the bad way for a cost
+   to move, which is why it borrows the alert colour without being an
+   alert. Inherited verbatim from upstream. */
+.trend--up { color: var(--trend-up); }
+.trend--down { color: var(--trend-down); }

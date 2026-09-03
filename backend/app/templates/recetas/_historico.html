@@ -1,0 +1,68 @@
+{#- The histórico card, in restaurant-manager's own shape: the line, the
+    Variación tile, and the six statistics -- all computed off the same
+    series the chart plots, so a tile can never disagree with the line
+    above it.
+
+    The numbers are read from `receta_costo_historico`, never recomputed
+    here (D13). A chart that changed shape retroactively every time a merma
+    was edited could not answer the one question it exists for. -#}
+<div class="card">
+  <h2 class="card__title">Histórico de costo</h2>
+
+  {% if hist.svg %}
+    <p class="muted small">
+      {% if receta.tipo == 'plato' %}Costo por porción{% else %}Costo del lote entero{% endif %},
+      {{ hist.puntos | length }} punto(s), con el método y la ventana que
+      estaban puestos cada día.
+    </p>
+    {{ hist.svg | safe }}
+
+    <div class="kpis">
+      {% if hist.variacion is not none %}
+      {% set v = hist.variacion | round(2) %}
+      <div class="kpi">
+        <div class="kpi__label">Variación</div>
+        <div class="kpi__value kpi__value--sm">
+          {% if v > 0 %}<span class="trend trend--up">&#9650; {{ v }}%</span>
+          {% elif v < 0 %}<span class="trend trend--down">&#9660; {{ (v | abs) }}%</span>
+          {% else %}<span class="muted">Sin cambio</span>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="kpi"><div class="kpi__label">Media</div><div class="kpi__value kpi__value--sm">{{ hist.stats.mean | money }}</div></div>
+      <div class="kpi"><div class="kpi__label">Mediana</div><div class="kpi__value kpi__value--sm">{{ hist.stats.median | money }}</div></div>
+      <div class="kpi"><div class="kpi__label">Moda</div><div class="kpi__value kpi__value--sm">{{ hist.stats.mode | money }}</div></div>
+      <div class="kpi"><div class="kpi__label">Desv. estándar</div><div class="kpi__value kpi__value--sm">{{ hist.stats.std | money }}</div></div>
+      <div class="kpi"><div class="kpi__label">Máximo</div><div class="kpi__value kpi__value--sm">{{ hist.stats.max | money }}</div></div>
+      <div class="kpi"><div class="kpi__label">Mínimo</div><div class="kpi__value kpi__value--sm">{{ hist.stats.min | money }}</div></div>
+    </div>
+
+    {% if hist.estimados %}
+    <p class="muted small">
+      {{ hist.estimados }} de esos puntos son <strong>estimados</strong> —
+      se dibujan huecos y con línea punteada. Los precios que usan son
+      reales y de ese día, pero la receta y los mapeos son los de hoy: se
+      calcularon después, para que la tarjeta no naciera vacía. Los días que
+      el app estuvo corriendo se guardan solos y no se vuelven a tocar.
+    </p>
+    {% endif %}
+    {% if hist.sin_costo %}
+    <p class="muted small">
+      {{ hist.sin_costo }} día(s) no tienen punto: ese día la receta estaba
+      incompleta. No se dibuja un cero — un cero se leería como «salió
+      gratis».
+    </p>
+    {% endif %}
+  {% else %}
+    <p class="empty">
+      {% if hist.puntos %}Solo hay un punto guardado; con uno no hay línea que dibujar.
+      {% else %}Todavía no hay costos guardados de esta receta.{% endif %}
+    </p>
+    <p class="empty__hint">
+      El costo del día se guarda solo cada vez que se sincroniza el
+      catálogo, que es lo único que puede mover un precio. Desde
+      <a href="/ajustes">Ajustes</a> también se guarda a mano, y se puede
+      sembrar el pasado.
+    </p>
+  {% endif %}
+</div>

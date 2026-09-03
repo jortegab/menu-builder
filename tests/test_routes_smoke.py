@@ -279,6 +279,41 @@ class RouteSmokeTest(DbTestCase):
         self.db.expire_all()
         self.assertEqual(len(self.salsa.lineas), 1)
 
+    # -- histórico ---------------------------------------------------------
+
+    def test_la_tarjeta_de_historico_no_miente_estando_vacia(self):
+        r = self.client.get(f"/recetas/{self.plato.id}")
+        self.assertIn("Histórico de costo", r.text)
+        self.assertIn("Todavía no hay costos guardados", r.text)
+        self.assertNotIn("<svg", r.text)
+
+    def test_guardar_hoy_y_sembrar_dibujan_la_curva(self):
+        # A receta whose every ingredient has a price -- the seeded plato is
+        # deliberately incomplete, and an incomplete day stores no number to
+        # plot, which is D10 all the way into the chart.
+        completa = recetas_svc.create(
+            self.db, nombre="Pechuga sola", tipo="plato", porciones="1"
+        )
+        recetas_svc.agregar_linea(
+            self.db, completa, tipo_componente="insumo",
+            componente_id=self.pechuga.id, cantidad="180",
+        )
+        self.client.post("/ajustes/historico?backfill=1", follow_redirects=False)
+        self.client.post("/ajustes/historico", follow_redirects=False)
+        r = self.client.get(f"/recetas/{completa.id}")
+        self.assertIn("<svg", r.text)
+        self.assertIn("Variación", r.text)
+        self.assertIn("Mediana", r.text)
+        # The seeded stretch has to be legible as seeded.
+        self.assertIn("es-estimado", r.text)
+        self.assertIn("estimados", r.text)
+
+    def test_el_panel_de_ajustes_cuenta_lo_guardado(self):
+        self.client.post("/ajustes/historico", follow_redirects=False)
+        r = self.client.get("/ajustes")
+        self.assertIn("Costos guardados", r.text)
+        self.assertIn("Días con datos", r.text)
+
     def test_crear_una_receta_desde_el_formulario(self):
         r = self.client.post(
             "/recetas",

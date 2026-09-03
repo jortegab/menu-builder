@@ -310,6 +310,41 @@ class ErroresDeDatos(CosteoTestCase):
         self.assertIn("niveles", c.error)
 
 
+class LecturaDespuesDeEscribir(CosteoTestCase):
+    """The session is `expire_on_commit=False` on purpose, so a relationship
+    loaded before a write stays loaded without it. A cost read through
+    `Receta.lineas` right after adding a line was therefore the cost of the
+    recipe as it was a moment ago -- a perfectly plausible number, one line
+    out of date, with nothing on screen to give it away.
+    """
+
+    def test_una_linea_agregada_cuenta_de_inmediato(self):
+        plato = svc.create(self.db, nombre="Pollo", tipo="plato", porciones="1")
+        pechuga = self.insumo_con_precio("Pechuga", "g", "4")
+        svc.agregar_linea(
+            self.db, plato, tipo_componente="insumo", componente_id=pechuga.id,
+            cantidad="100", unidad="g",
+        )
+        # Warm the relationship, then write again without refreshing.
+        self.assertEqual(len(plato.lineas), 1)
+        svc.agregar_linea(
+            self.db, plato, tipo_componente="insumo", componente_id=pechuga.id,
+            cantidad="100", unidad="g",
+        )
+        self.assertEqual(self.costear(plato).costo_total, Decimal("800.00"))
+
+    def test_una_linea_borrada_deja_de_contar_de_inmediato(self):
+        plato = svc.create(self.db, nombre="Pollo", tipo="plato", porciones="1")
+        pechuga = self.insumo_con_precio("Pechuga", "g", "4")
+        linea = svc.agregar_linea(
+            self.db, plato, tipo_componente="insumo", componente_id=pechuga.id,
+            cantidad="100", unidad="g",
+        )
+        self.assertEqual(self.costear(plato).costo_total, Decimal("400.00"))
+        svc.eliminar_linea(self.db, linea)
+        self.assertEqual(self.costear(plato).costo_total, Decimal(0))
+
+
 class Cache(CosteoTestCase):
     def test_costear_muchas_precia_cada_insumo_una_sola_vez(self):
         """Nine plates using pechuga price pechuga once. `explicar` is a

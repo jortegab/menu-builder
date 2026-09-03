@@ -9,7 +9,7 @@ e-invoice ingestion app, over a read-only JSON API. This app never
 recomputes upstream's price math and never writes to it.
 
 **Read `PLAN.md` before proposing architecture.** It has the full design,
-31 numbered decisions with rationale, 8 non-negotiables, and the open
+32 numbered decisions with rationale, 8 non-negotiables, and the open
 questions. Do not redesign what is already decided there — if you think a
 decision is wrong, say so and argue it, but do not silently deviate.
 
@@ -23,9 +23,10 @@ anywhere else in the UI.
 
 ## Status
 
-**Phase 1, step 1.7.** The catalog mirror, insumo CRUD, the mapping queue,
-the costing engine, and recetas — all wired to real data. A plato costs a
-real number now.
+**Phase 1 is complete.** The catalog mirror, insumo CRUD, the mapping
+queue, the costing engine, recetas, the builder and the cost history — all
+wired to real data. The operator can cost the real menu, and every figure
+on screen can explain itself. Phase 2 (precio de venta y margen) is next.
 Screens: `/recetas`, `/recetas/{id}` (the builder), `/preparaciones`,
 `/insumos`, `/insumos/mapeo`, `/ajustes`.
 
@@ -208,7 +209,32 @@ the right form; a reorder rewrites `#form-orden`'s id list and submits it;
 a drop outside the receta submits nothing). Re-do that by hand, or in a
 scratch harness, if you change it.
 
-**Next: step 1.7** — `receta_costo_historico` and the cost-over-time card.
+**Step 1.7 is done too** (2026-09-02), and with it Phase 1:
+`receta_costo_historico` and the histórico card. `cost_chart.py` is pure
+(stats, Variación, the SVG); `receta_historico.py` is the DB half.
+
+- **The snapshot rides the catalog sync**, not a scheduler — a sync is the
+  only thing that can move a price, and it is already a button someone is
+  watching. It runs only when the sync succeeded: a point recorded against
+  a mirror that failed to refresh says "nothing changed" when the truth is
+  "we could not look".
+- **`computed_at` is written in local time, not UTC.** `_es_estimado`
+  compares it against `fecha`, and Costa Rica is UTC-6 — a snapshot taken
+  at 20:00 and stamped in UTC lands on tomorrow and marks a perfectly real
+  observation as an estimate every single evening.
+- **D32's backfill is not a quiet extension of the snapshot.** It uses each
+  day's *real* prices (`costing.py` already windows on `hoy`); what is
+  today's is the recipe and the mappings. It never overwrites an observed
+  row, and every seeded point is drawn hollow and dashed with a count and
+  an explanation on the card. `computed_at > fecha` is the marker — no new
+  column, so no hand-written ALTER TABLE.
+- **No Chart.js.** An inline SVG the server renders needs no client code at
+  all, and a line plus six numbers does not justify 200 kB of vendored
+  JavaScript. Upstream's `price_stats.py` does the same.
+
+**Next: Phase 2** — precio de venta y margen. Re-read D21 and §15's first
+row before starting: `iva_pct`, `servicio_pct` and `servicio_en_base_iva`
+go in `app_setting`, never as a `/1.23` literal in a service.
 
 
 
@@ -273,11 +299,20 @@ backend/app/
     recetas.py      receta + receta_linea master data. Owns the four
                     write-time refusals; imports graph.py for two of them
     receta_costs.py the DB -> graph.py bridge. `Costeo` carries a third
-                    state, `error`, so a bad row is legible instead of a 500
+                    state, `error`, so a bad row is legible instead of a 500.
+                    Reads receta lines as *columns*, never through
+                    `Receta.lineas`: expire_on_commit=False makes a
+                    collection loaded before a write one line stale, and a
+                    cost that is one line out of date looks perfectly fine
+    cost_chart.py   histórico stats + the inline SVG. Pure, no Chart.js
+    receta_historico.py  stores one cost per receta per day. Rides the
+                    sync; D32's backfill marks its rows by computed_at
   routers/
-    ajustes.py      /ajustes: the sync panel. Sync runs synchronously in
-                    the request -- deliberate for a local single-operator
-                    app (~2s incremental), not an oversight
+    ajustes.py      /ajustes: the sync panel and the cost-history panel.
+                    Sync runs synchronously in the request -- deliberate for
+                    a local single-operator app (~2s incremental), not an
+                    oversight -- and a successful sync also snapshots the
+                    day's cost for every active receta
     insumos.py      /insumos: list, create, edit, archive
     mapeo.py        /insumos/mapeo. Registered BEFORE insumos.py or
                     /insumos/{insumo_id} captures it and 422s
@@ -298,9 +333,10 @@ backend/app/
                     one render path, so a total after a drag cannot be
                     computed differently from the one on page load (D16)
     _paleta.html    the palette fragment, swapped by its own search box
+    _historico.html the cost-over-time card, in upstream's shape
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
                     + `override_get_db` for the TestClient smoke tests
-PLAN.md             the design. 31 decisions, 8 non-negotiables
+PLAN.md             the design. 32 decisions, 8 non-negotiables
 ```
 
 **`units.py`, `costing.py` and `graph.py` are pure on purpose** — no DB, no
@@ -444,7 +480,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 252 tests today.
+`unittest`, no pytest, matching upstream. 291 tests today.
 
 Coverage is deliberately weighted toward the nasty cases rather than the
 happy path, because the happy path is the one that gets exercised by hand

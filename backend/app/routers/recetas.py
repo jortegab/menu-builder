@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Insumo, Receta, RecetaLinea
-from ..services import receta_costs
+from ..services import receta_costs, receta_historico
 from ..services import recetas as svc
 from ..services.insumos import ValidationError
 from ..services.units import compatible_units
@@ -195,6 +195,7 @@ def detalle(receta_id: int, request: Request, db: Session = Depends(get_db)):
         _contexto_builder(
             db, receta,
             usos=svc.usos(db, receta),
+            hist=receta_historico.tarjeta(db, receta),
             **_paleta(db),
         ),
     )

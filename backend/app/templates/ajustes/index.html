@@ -71,4 +71,38 @@
   {% endif %}
 </div>
 
+<div class="card">
+  <h2 class="card__title">Histórico de costo de las recetas</h2>
+  <p class="muted">
+    Cada vez que se sincroniza el catálogo se guarda, además, lo que cuesta
+    ese día cada receta activa. Eso es lo que dibuja la curva de «Histórico
+    de costo» en cada plato — y se guarda en vez de recalcularse para que
+    editar una merma hoy no le cambie la forma al pasado.
+  </p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi__label">Costos guardados</div><div class="kpi__value">{{ historico_filas }}</div></div>
+    <div class="kpi"><div class="kpi__label">Días con datos</div><div class="kpi__value">{{ historico_dias }}</div></div>
+  </div>
+
+  <div class="actions">
+    <form method="post" action="/ajustes/historico">
+      <button class="btn btn--ghost" type="submit">Guardar el costo de hoy</button>
+    </form>
+    <form method="post" action="/ajustes/historico?backfill=1">
+      <button class="btn btn--ghost" type="submit">Sembrar los últimos 6 meses</button>
+    </form>
+  </div>
+  <p class="muted small">
+    «Guardar el costo de hoy» es lo mismo que hace la sincronización sola;
+    sirve si cambiaste una receta y querés que quede anotado ya.
+    <br>
+    «Sembrar» rellena los días de antes, uno por semana, con los precios
+    reales de cada uno de esos días pero con la receta y los mapeos de hoy
+    — o sea, una <strong>estimación</strong>, y la curva la dibuja punteada
+    y lo dice. Sirve para que la tarjeta no nazca vacía. Nunca pisa un día
+    que ya se había guardado de verdad.
+  </p>
+</div>
+
 {% endblock %}

@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from ..models import Insumo, Receta, RecetaLinea
 from . import graph, insumo_costs
@@ -93,32 +93,48 @@ def cargar_grafo(db: Session) -> dict[int, graph.Receta]:
 
     All of them, not just the subtree being costed: the adjacency has to be
     complete for `find_cycle`'s read-time defence to mean anything, and it
-    is one query with one join.
+    is two queries either way.
+
+    **The lines are read as columns, never through `Receta.lineas`.** The
+    session is configured `expire_on_commit=False` (`db.py`, deliberately),
+    so a collection loaded before a line was added stays loaded without it,
+    and a cost computed right after a write would be a cost of the recipe as
+    it was a moment ago. That is invisible on screen -- the number looks
+    perfectly plausible, it is just one line out of date -- and it is
+    exactly what `receta_historico.instantanea` does: write, then cost.
+    Reading columns sidesteps the identity map entirely.
     """
-    filas = db.scalars(select(Receta).options(selectinload(Receta.lineas))).all()
-    return {
-        r.id: graph.Receta(
-            id=r.id,
-            nombre=r.nombre,
-            tipo=r.tipo,
-            rendimiento_cantidad=r.rendimiento_cantidad,
-            rendimiento_unidad=r.rendimiento_unidad,
-            porciones=r.porciones,
-            lineas=[
-                graph.Linea(
-                    componente_tipo=ln.tipo_componente,
-                    componente_id=(
-                        ln.insumo_id if ln.tipo_componente == "insumo" else ln.componente_receta_id
-                    ),
-                    cantidad=ln.cantidad,
-                    unidad=ln.unidad,
-                    orden=ln.orden,
-                    linea_id=ln.id,
-                )
-                for ln in sorted(r.lineas, key=lambda ln: ln.orden)
-            ],
+    lineas: dict[int, list[graph.Linea]] = {}
+    for lid, receta_id, orden, tipo_comp, insumo_id, comp_id, cantidad, unidad in db.execute(
+        select(
+            RecetaLinea.id, RecetaLinea.receta_id, RecetaLinea.orden,
+            RecetaLinea.tipo_componente, RecetaLinea.insumo_id,
+            RecetaLinea.componente_receta_id, RecetaLinea.cantidad, RecetaLinea.unidad,
+        ).order_by(RecetaLinea.receta_id, RecetaLinea.orden, RecetaLinea.id)
+    ).all():
+        lineas.setdefault(receta_id, []).append(
+            graph.Linea(
+                componente_tipo=tipo_comp,
+                componente_id=insumo_id if tipo_comp == "insumo" else comp_id,
+                cantidad=cantidad,
+                unidad=unidad,
+                orden=orden,
+                linea_id=lid,
+            )
         )
-        for r in filas
+
+    return {
+        rid: graph.Receta(
+            id=rid, nombre=nombre, tipo=tipo,
+            rendimiento_cantidad=rc, rendimiento_unidad=ru, porciones=porciones,
+            lineas=lineas.get(rid, []),
+        )
+        for rid, nombre, tipo, rc, ru, porciones in db.execute(
+            select(
+                Receta.id, Receta.nombre, Receta.tipo,
+                Receta.rendimiento_cantidad, Receta.rendimiento_unidad, Receta.porciones,
+            )
+        ).all()
     }
 
 
@@ -247,5 +263,15 @@ def lineas_por_id(db: Session, receta: Receta) -> dict[int, RecetaLinea]:
     """{linea_id: row} for the receta being rendered, so the builder can put
     a costed line (which `graph.py` knows only as a dataclass) back beside
     its editable database row.
+
+    Queried rather than read off `receta.lineas`, for the same reason
+    `cargar_grafo` reads columns: the collection can be one write stale.
     """
-    return {ln.id: ln for ln in receta.lineas}
+    return {
+        ln.id: ln
+        for ln in db.scalars(
+            select(RecetaLinea)
+            .where(RecetaLinea.receta_id == receta.id)
+            .order_by(RecetaLinea.orden, RecetaLinea.id)
+        )
+    }

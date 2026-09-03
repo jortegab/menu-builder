@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db
-from ..models import CatalogPricePoint, CatalogProduct, CatalogSyncRun
-from ..services import catalog_sync
+from ..models import CatalogPricePoint, CatalogProduct, CatalogSyncRun, RecetaCostoHistorico
+from ..services import catalog_sync, receta_historico
 from ..services.catalog_client import CatalogClient
 from ..templating import templates
 
@@ -30,8 +30,6 @@ router = APIRouter()
 
 
 def _panel(db: Session) -> dict:
-    from sqlalchemy import func
-
     return {
         "productos": db.scalar(select(func.count()).select_from(CatalogProduct)) or 0,
         "precios": db.scalar(select(func.count()).select_from(CatalogPricePoint)) or 0,
@@ -41,6 +39,12 @@ def _panel(db: Session) -> dict:
             select(CatalogSyncRun).order_by(CatalogSyncRun.id.desc()).limit(5)
         ).all(),
         "upstream": settings.upstream_api_url,
+        "historico_filas": db.scalar(
+            select(func.count()).select_from(RecetaCostoHistorico)
+        ) or 0,
+        "historico_dias": db.scalar(
+            select(func.count(func.distinct(RecetaCostoHistorico.fecha)))
+        ) or 0,
     }
 
 
@@ -54,5 +58,27 @@ def sincronizar(db: Session = Depends(get_db), full: str = ""):
     with CatalogClient(
         settings.upstream_api_url, timeout_seconds=settings.upstream_timeout_seconds
     ) as client:
-        catalog_sync.sync_catalog(db, client, full=bool(full))
+        run = catalog_sync.sync_catalog(db, client, full=bool(full))
+    # The snapshot rides the sync because a sync is *when a cost can have
+    # moved* -- there is nothing else in this app that changes a price. It
+    # runs only on a successful pull: recording today's cost against a
+    # mirror that failed to refresh would put a point on the chart that
+    # says "nothing changed" when the truth is "we could not look".
+    if run.status == "ok":
+        receta_historico.instantanea(db)
+    return RedirectResponse("/ajustes", status_code=303)
+
+
+@router.post("/ajustes/historico")
+def historico(db: Session = Depends(get_db), backfill: str = ""):
+    """Store today's cost for every receta, or seed the past.
+
+    Two buttons, deliberately separate: one records what things cost today,
+    the other fills days nobody was here for and marks every point it
+    writes as an estimate (D32).
+    """
+    if backfill:
+        receta_historico.backfill(db)
+    else:
+        receta_historico.instantanea(db)
     return RedirectResponse("/ajustes", status_code=303)

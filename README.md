@@ -12,7 +12,7 @@ historial de compras real, con descuentos, sin IVA, convertido a colones
 cuando la factura vino en dólares. Este app no vuelve a calcular nada de
 eso: lo lee.
 
-> **Estado: fase 1, paso 1.7.** Ya funciona todo lo que va desde la
+> **Estado: fase 1 completa.** Ya funciona todo lo que va desde la
 > factura hasta el costo de un plato:
 >
 > - El catálogo de `restaurant-manager` se trae completo y se mantiene al
@@ -30,9 +30,13 @@ eso: lo lee.
 > - **El constructor**: se arrastra de la lista a la receta, se cambia un
 >   número y el total se mueve solo. Sin npm y sin CDN — funciona con el
 >   internet caído.
+> - **El histórico**: cada sincronización guarda lo que cuesta ese día cada
+>   receta, y la curva del plato ya trae **27 puntos reales** de marzo a
+>   setiembre de 2026.
 >
-> **Lo que todavía no existe es el histórico del costo del plato.** Ver
-> «Qué falta».
+> Con eso la **fase 1 queda completa**: se puede costear el menú de verdad,
+> y cualquier número en pantalla puede explicar de dónde salió. Lo que
+> sigue es la fase 2 — precio de venta y margen.
 
 ---
 
@@ -171,11 +175,10 @@ declara porciones.
 
 ---
 
-## Qué hace y qué va a hacer (fase 1)
+## Qué hace (fase 1)
 
-> **Insumos, Mapeo, el costeo, las recetas y el constructor ya están
-> construidos y corriendo contra datos reales.** De esta sección, lo único
-> que todavía no existe es el **histórico** del costo del plato.
+> Todo lo de esta sección está **construido y corriendo contra datos
+> reales**.
 
 ### Insumos
 
@@ -260,37 +263,51 @@ el problema:
 - **Una unidad de otra magnitud** — 6 oz de algo que se costea en gramos.
   El mensaje nombra las dos unidades.
 
-### Histórico *(todavía no)*
+### Histórico
 
-Cuánto costaba este plato hace tres meses. Una foto diaria del costo, con
+Cuánto costaba este plato hace tres meses. Una foto del costo por día, con
 el método y la ventana que se usaron ese día, en la misma tarjeta que
-`restaurant-manager` ya usa para el histórico de precios. Es el paso 1.7.
+`restaurant-manager` ya usa para el histórico de precios: la curva, la
+Variación, y media / mediana / moda / desviación / máximo / mínimo.
+
+**Se guarda, no se recalcula.** Si la curva se armara con los mapeos de
+hoy, editar una merma esta tarde le cambiaría la forma al pasado — y una
+curva que se reescribe sola no puede contestar la única pregunta que le
+hacen: ¿este plato se está poniendo más caro?
+
+La foto se toma sola cada vez que se sincroniza el catálogo, que es lo
+único que puede mover un precio. Y solo si la sincronización salió bien:
+anotar un costo contra un catálogo que no se pudo refrescar diría «no
+cambió nada» cuando la verdad es «no pudimos ver».
+
+Para que la tarjeta no nazca vacía, desde Ajustes se puede **sembrar** el
+pasado. Esos puntos usan los precios reales de cada día, pero la receta y
+los mapeos de hoy — o sea que son una **estimación**, y por eso se dibujan
+huecos, con línea punteada, y la tarjeta dice cuántos son y por qué. Nunca
+pisan un día que se guardó de verdad.
 
 ---
 
 ## Qué falta
 
-De la fase 1 queda una cosa: el **histórico de costo del plato** (paso
-1.7).
-
-Lo que sí está, hoy:
+**La fase 1 está completa.** Lo que hay, hoy:
 
 - El diseño completo, con sus decisiones y el porqué de cada una —
-  `PLAN.md`, 31 decisiones numeradas y 8 reglas innegociables.
+  `PLAN.md`, 32 decisiones numeradas y 8 reglas innegociables.
 - El modelo de datos (10 tablas) y el esqueleto que levanta con
   `docker compose up`.
 - **La sincronización del catálogo**, funcionando contra el app real: 1 420
   productos y 17 645 compras en 46 segundos, y unos 2 segundos cuando solo
   trae lo que cambió. Se maneja desde Ajustes.
-- **Insumos, mapeo, costeo, recetas y el constructor**, todo contra datos
-  reales.
+- **Insumos, mapeo, costeo, recetas, el constructor y el histórico**, todo
+  contra datos reales.
 - El motor de costeo: conversión de unidades, los seis métodos, la merma,
-  el recorrido del grafo de recetas y la detección de ciclos — con 252
+  el recorrido del grafo de recetas y la detección de ciclos — con 291
   pruebas, incluidas las feas (ventana vacía, precio sin tipo de cambio,
   una salsa que se contiene a sí misma, unidades incompatibles, y un
   anidamiento que se pasa del tope por los dos lados a la vez).
 
-Y después de la fase 1 quedan dos más, ya pensadas pero sin diseñar:
+Quedan dos fases más, ya pensadas pero sin diseñar:
 
 - **Fase 2 — precio de venta y margen.** Cuánto cobrás, cuánto te queda,
   qué porcentaje de food cost, y el precio sugerido a partir de un food

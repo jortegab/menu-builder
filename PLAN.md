@@ -1,9 +1,10 @@
 # Menu Builder — Design Plan
 
-**Status:** Phase 1, step 1.7. Steps 1.0-1.6 are built and verified
-against live data (see §11); `receta_costo_historico` and the
-cost-over-time card are next. Phases 2 and 3 stay outlined deliberately
-short — they are real commitments about *direction*, not finished designs.
+**Status:** Phase 1 complete. Steps 1.0-1.7 are built and verified against
+live data (see §11): the operator can cost the real menu, and every figure
+on screen can explain itself. Phase 2 is next. Phases 2 and 3 stay outlined
+deliberately short — they are real commitments about *direction*, not
+finished designs.
 
 **Companion app:** `restaurant-manager`, the same operator's
 e-invoice-driven management suite for the same single restaurant in Costa
@@ -701,15 +702,56 @@ makes the operator willing to trust a number they did not compute.
 
 ### 7.7 Cost history
 
-`receta_costo_historico` gets one row per receta per day from a scheduled
-recompute, storing the cost *and* the inputs that produced it (method,
-window, mirror as-of). That is what backs the cost-over-time chart, and it
-is stored rather than recomputed because recomputing history from today's
-mappings would rewrite the past every time a mapping changes.
+`receta_costo_historico` gets one row per receta per day, storing the cost
+*and* the inputs that produced it (method, window, mirror as-of). That is
+what backs the cost-over-time chart, and it is stored rather than recomputed
+because recomputing history from today's mappings would rewrite the past
+every time a mapping changes.
 
 The chart reuses upstream's `_stats_macros.html` card shape —
 media/mediana/moda/desv./máx./mín. plus a Variación tile — computing its
 stats off the same series it plots, for the same reason upstream does.
+
+**The snapshot rides the catalog sync, not a scheduler** (built 2026-09-02).
+A sync is the only thing in this app that can move a price, so it is the
+natural trigger, and it is already a synchronous button somebody is looking
+at (§10, `routers/ajustes.py`). A cron nobody watches would be a worse
+answer, and there is no worker to run one. It writes only on a *successful*
+pull: recording a cost against a mirror that failed to refresh would put a
+point on the chart saying "nothing changed" when the truth is "we could not
+look". A second button in Ajustes stores today on demand, for when a recipe
+was edited rather than a price.
+
+### 7.7.1 Seeding the past (D32)
+
+A stored-only history means the card is empty on the day it ships and stays
+thin for months — on a brand-new install, for a year. That is a real
+product problem: the chart exists to answer "is this plate getting more
+expensive", and it cannot answer anything until enough days have passed
+that the question has already been asked and dropped.
+
+So there is a **backfill**, and it is deliberately *not* a quiet extension
+of the daily snapshot:
+
+- It computes a past date with `hoy` set to that date, so the **prices are
+  real and are that day's** — `costing.py`'s window already does this.
+  What is today's is the *recipe* and the *mappings*.
+- It **never overwrites an existing row.** A day that was actually observed
+  stays observed; re-running the seed cannot turn real history into
+  estimates.
+- Every row it writes is **legible as an estimate** without a new column:
+  `computed_at` is later than the row's own `fecha`, which is exactly what
+  "computed after the fact" means. The chart draws those points hollow, the
+  segments touching them dashed, and the card says how many there are and
+  why.
+- It steps **weekly, not daily**: the underlying prices move on purchase
+  dates, not calendar days, so 26 points over six months draw the same
+  shape as 180 for a seventh of the work.
+
+This does **not** weaken D13. D13 forbids deriving the chart from a
+recomputation *at render time*, which is what would make the past move
+whenever a merma is edited. The backfill runs once, on a button, and what
+it writes is then as fixed as any other stored row.
 
 ---
 
@@ -938,7 +980,7 @@ is green.
 | 1.4 | ~~Costing engine wired to real data + "¿Por qué este costo?"~~ — **done 2026-09-02** | ✅ verified: app said ₡4.36/g, hand-computed SQL median said 4.3632 |
 | 1.5 | ~~`receta` / `receta_linea`, preparaciones, cycle guard~~ — **done 2026-09-02**: verified live, a fondo → salsa → plato nest costing ₡790.51 and ₡1 104.48, matching a hand-written SQL median to the céntimo | ✅ a salsa can be built and reused by two platos |
 | 1.6 | ~~The builder screen: drag-drop, live totals, incompleteness~~ — **done 2026-09-02**: htmx and a 150-line vendored drag module, both served from `static/vendor/`; ~270 ms per server render, so a three-line plate is ~2.5 s of machine time and the rest is typing | ✅ a plate is costed from scratch in under two minutes |
-| 1.7 | `receta_costo_historico` + the cost-over-time card | a chart with real daily points |
+| 1.7 | ~~`receta_costo_historico` + the cost-over-time card~~ — **done 2026-09-02**: the snapshot rides the sync, plus D32's seeding. Verified live: 27 points from 2026-03-06 to 2026-09-02 off the real catalog | ✅ a chart with real daily points |
 
 **Phase 1 is done when** the operator can cost the real menu, and every
 figure on screen can explain itself.
@@ -1341,3 +1383,4 @@ archaeology problem.
 | D30 | An insumo is **costed** in a canonical base unit (`g`/`ml`/`unidad`), and the **recipe line chooses its own unit** and converts | A cost has to be per something, and per-gram never needs a fraction — but nothing about that should force a recipe to write grams. An aceite costed per ml can be called for in L, ml or fl oz; a pechuga costed per gram in kg, g, lb or oz, and two lines of one recipe may differ. Freedom within the dimension only: crossing mass and volume still needs a density (non-negotiable #6). Supersedes the original `Insumo.unidad_uso` framing, which read as "the unit the kitchen must measure in" — the storage was always canonical, but the name promised something about recipes that the costing engine never imposed. Renamed `unidad_base`, live column altered by hand (no Alembic, D15) | 2026-09-02 | Confirmed |
 | D31 | **`oz` means a fluid ounce (29.57 ml) and nothing else.** There is no mass ounce; solids are measured in grams. `lb` is kept for the *parser* only | Operator's rule: the kitchen says "oz" for liquids and grams for everything solid, so one meaning is enough and the screens can show a bare "oz" with no qualifier. A first draft carried both `oz` (mass) and `floz` (volume) — that forced every screen to say *which* ounce, and left "6 oz de aceite" able to land on either, a believable figure wrong by the whole dimension. Borne out by the catalog: of 41 products with a readable OZ pack size, every food one is a liquid. Pounds still parse because real descriptions say `4/2.2 LBS` | 2026-09-02 | Confirmed (revised same day) |
 | D21 | Phase 2 strips an all-in menu price with **one constant, `/1.23`** — every price is set as base + 13% IVA + 10% servicio, both on the base | Operator's own pricing rule, verified against 620 days: IVA is exactly 13.00% of `subtotal − descuento` on 617 of them and never above, while IVA ÷ (subtotal + servicio) is 11.86% — so servicio is not in the IVA base and the divisor is 1.23, not 1.243. **Supersedes this row's first draft**, which called for per-plato `lleva_servicio`/`iva_pct` flags: that was inferred from aggregate ratios below 10%/13%, and the gap is the sales mix (takeout carries no servicio), not the pricing rule. Corollary: never apply `/1.23` to aggregate sales — servicio there ranges 6.24-10.00% of subtotal daily; use the file's own `Subtotal − Descuento` | 2026-09-02 | Confirmed (revised same day) |
+| D32 | The cost history can be **seeded** for past dates, and every seeded point says so | A stored-only history (D13) leaves the card empty for months and, on a new install, for a year — the chart cannot answer "is this plate getting more expensive" until long after anyone stopped asking. The seed uses each day's *real* prices (`costing.py` already windows on `hoy`); what is today's is the recipe and the mappings, so a seeded point is an estimate and is drawn as one — hollow marker, dashed segment, a count and an explanation on the card. It never overwrites an observed row, so re-running it cannot turn history into estimates. No new column: `computed_at > fecha` already *means* "computed after the fact" (D15 says a column costs a hand-written ALTER TABLE). **This does not weaken D13**, which forbids recomputing at *render* time — that is what would make the past move every time a merma is edited. This runs once, on a button, and what it writes is then as fixed as any other row | 2026-09-02 | Confirmed |
