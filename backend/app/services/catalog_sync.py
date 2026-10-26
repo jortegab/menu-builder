@@ -7,10 +7,20 @@ here, which is what makes a full rebuild safe -- `DELETE` and re-pull is
 always a valid repair.
 
 **Idempotent by construction, not by care.** Products are keyed on
-`internal_code` and price points on `(clave, numero_linea)` -- upstream's
-own natural keys -- so running the same sync twice writes the same rows
-twice and changes nothing the second time. No "have I seen this?" bookkeeping
-and no dependence on the watermark being exactly right.
+`internal_code` and price points on the line they mirror -- `(clave,
+numero_linea)` for an electronic line, `(factura_fisica_id, numero_linea)`
+for one typed on a factura física (D53) -- upstream's own natural keys, so
+running the same sync twice writes the same rows twice and changes nothing
+the second time. No "have I seen this?" bookkeeping and no dependence on
+the watermark being exactly right.
+
+**A product's lines are reconciled, not appended** (D53, upstream's v3): a
+served line is a current figure there, which an edit of its factura or an
+Ajuste de cantidades restates, moves to another product or removes, every
+such edit stamping the products it touches. So each product upstream
+reports as modified has its compras walked whole and its points made those
+lines: new ones inserted, restated or moved ones updated in place, and the
+ones no longer served deleted.
 
 **A failed sync is not an error state for this app.** It records the failed
 run and returns; the mirror simply stops advancing, costing keeps working
@@ -29,7 +39,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from decimal import Decimal, InvalidOperation
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -136,57 +147,132 @@ def _upsert_product(db: Session, payload: dict) -> tuple[CatalogProduct, bool]:
     return product, created
 
 
-def _sync_prices(db: Session, client, product: CatalogProduct) -> int:
-    """Every price point upstream has for this product that the mirror does
-    not, inserted. Returns how many were new.
+@dataclass
+class Cambios:
+    """What one product's reconcile wrote: lines inserted, lines updated in
+    place (restated upstream, or moved here from another product), and
+    lines deleted because upstream no longer serves them for it."""
 
-    Existing rows are left untouched rather than updated: a
-    `(clave, numero_linea)` identifies one line of one issued invoice, and
-    an issued invoice does not change. If upstream ever *restates* a line,
-    that is a rebuild (`DELETE` + re-pull), not an update path to maintain
-    here.
+    insertados: int = 0
+    actualizados: int = 0
+    borrados: int = 0
+
+
+def _linea(
+    origen: str | None, clave: str | None, factura_fisica_id: int | None, numero: int
+) -> tuple:
+    """The line a point mirrors: a typed one by its factura, an electronic
+    one by its clave -- each with its line number (D53)."""
+    if origen == "fisica":
+        return ("fisica", factura_fisica_id, numero)
+    return ("electronica", clave, numero)
+
+
+def _escala(campo: str) -> int | None:
+    return getattr(CatalogPricePoint.__table__.c[campo].type, "scale", None)
+
+
+def _valores(row: dict) -> dict:
+    """A served line's figures, each at the scale its column keeps. Upstream
+    may send more decimals than a column holds (a quantity weighed to four
+    places, here three); compared unrounded, such a line would read as
+    restated on every sync."""
+    valores = {
+        "fecha": _date(row.get("fecha")),
+        "cantidad": _dec(row.get("cantidad")) or Decimal(0),
+        "unidad_comercial": row.get("unidad_comercial"),
+        "moneda": row.get("moneda"),
+        "precio_efectivo": _dec(row.get("precio_efectivo")) or Decimal(0),
+        "precio_efectivo_crc": _dec(row.get("precio_efectivo_crc")),
+        "unit_ratio": _dec(row.get("unit_ratio")),
+        "precio_efectivo_normalizado_crc": _dec(row.get("precio_efectivo_normalizado_crc")),
+        "iva_pct": _dec(row.get("iva_pct")),
+        "descuento_pct": _dec(row.get("descuento_pct")),
+    }
+    for campo, valor in valores.items():
+        escala = _escala(campo)
+        if isinstance(valor, Decimal) and escala is not None:
+            valores[campo] = valor.quantize(Decimal(1).scaleb(-escala), rounding=ROUND_HALF_UP)
+    return valores
+
+
+def _en_otro_producto(db: Session, linea: tuple) -> CatalogPricePoint | None:
+    """The mirror's point for this line under another product -- one an edit
+    upstream moved -- or None."""
+    origen, documento, numero = linea
+    columna = CatalogPricePoint.factura_fisica_id if origen == "fisica" else CatalogPricePoint.clave
+    return db.scalar(
+        select(CatalogPricePoint).where(
+            columna == documento, CatalogPricePoint.numero_linea == numero
+        )
+    )
+
+
+def _sync_prices(db: Session, client, product: CatalogProduct) -> Cambios:
+    """This product's price points made the lines upstream serves for it
+    (D53): one the mirror lacks inserted; one upstream restated, or moved
+    here from another product, updated in place; one upstream no longer
+    serves for it deleted. Upstream's compras, walked whole, are the
+    product's current lines -- its v3 contract.
+
+    The caller flushes before each product, which is what settles a line
+    moved between two products in one run, either order: walked first, the
+    product it left deletes it and the other inserts it anew; walked
+    second, the product it joined has already taken it, and the one it
+    left no longer holds it.
     """
-    known = {
-        (clave, linea)
-        for clave, linea in db.execute(
-            select(CatalogPricePoint.clave, CatalogPricePoint.numero_linea).where(
-                CatalogPricePoint.catalog_product_id == product.id
-            )
+    propios = {
+        _linea(p.origen, p.clave, p.factura_fisica_id, p.numero_linea): p
+        for p in db.scalars(
+            select(CatalogPricePoint).where(CatalogPricePoint.catalog_product_id == product.id)
         )
     }
-    inserted = 0
+    vistos: set[tuple] = set()
+    cambios = Cambios()
     cursor = 0
     while True:
         page = client.compras(product.upstream_product_id, cursor=cursor, limite=_PAGE)
         for row in page.get("items", []):
-            key = (row["clave"], row["numero_linea"])
-            if key in known:
-                continue
-            known.add(key)
-            db.add(
-                CatalogPricePoint(
-                    catalog_product_id=product.id,
-                    clave=row["clave"],
-                    numero_linea=row["numero_linea"],
-                    fecha=_date(row.get("fecha")),
-                    cantidad=_dec(row.get("cantidad")) or Decimal(0),
-                    unidad_comercial=row.get("unidad_comercial"),
-                    moneda=row.get("moneda"),
-                    precio_efectivo=_dec(row.get("precio_efectivo")) or Decimal(0),
-                    precio_efectivo_crc=_dec(row.get("precio_efectivo_crc")),
-                    unit_ratio=_dec(row.get("unit_ratio")),
-                    precio_efectivo_normalizado_crc=_dec(
-                        row.get("precio_efectivo_normalizado_crc")
-                    ),
-                    iva_pct=_dec(row.get("iva_pct")),
-                    descuento_pct=_dec(row.get("descuento_pct")),
-                )
+            linea = _linea(
+                row.get("origen"),
+                row.get("clave"),
+                row.get("factura_fisica_id"),
+                row["numero_linea"],
             )
-            inserted += 1
+            if linea in vistos:
+                continue
+            vistos.add(linea)
+            valores = _valores(row)
+            punto = propios.get(linea) or _en_otro_producto(db, linea)
+            if punto is None:
+                origen, documento, numero = linea
+                db.add(
+                    CatalogPricePoint(
+                        catalog_product_id=product.id,
+                        origen=origen,
+                        clave=documento if origen == "electronica" else None,
+                        factura_fisica_id=documento if origen == "fisica" else None,
+                        numero_linea=numero,
+                        **valores,
+                    )
+                )
+                cambios.insertados += 1
+                continue
+            if punto.catalog_product_id != product.id or any(
+                getattr(punto, campo) != valor for campo, valor in valores.items()
+            ):
+                punto.catalog_product_id = product.id
+                for campo, valor in valores.items():
+                    setattr(punto, campo, valor)
+                cambios.actualizados += 1
         cursor = page.get("next_cursor")
         if not cursor:
             break
-    return inserted
+    for linea, punto in propios.items():
+        if linea not in vistos:
+            db.delete(punto)
+            cambios.borrados += 1
+    return cambios
 
 
 def _sync_categorias(db: Session, client) -> int:
@@ -238,7 +324,8 @@ def sync_catalog(db: Session, client, *, full: bool = False) -> CatalogSyncRun:
     db.add(run)
     db.commit()
 
-    productos = precios = 0
+    productos = 0
+    precios = Cambios()
     try:
         # Before a single row is written: refuse a contract whose meaning
         # this app was not written against, rather than parsing hopefully.
@@ -262,7 +349,10 @@ def sync_catalog(db: Session, client, *, full: bool = False) -> CatalogSyncRun:
                 # points to hang off -- the session is autoflush=False,
                 # mirroring upstream's, so this has to be explicit.
                 db.flush()
-                precios += _sync_prices(db, client, product)
+                cambios = _sync_prices(db, client, product)
+                precios.insertados += cambios.insertados
+                precios.actualizados += cambios.actualizados
+                precios.borrados += cambios.borrados
                 productos += 1
             db.commit()
             cursor = page.get("next_cursor")
@@ -281,7 +371,9 @@ def sync_catalog(db: Session, client, *, full: bool = False) -> CatalogSyncRun:
         log.warning("Sincronización del catálogo fallida: %s", exc)
     finally:
         run.productos_upserted = productos
-        run.precios_inserted = precios
+        run.precios_inserted = precios.insertados
+        run.precios_actualizados = precios.actualizados
+        run.precios_borrados = precios.borrados
         run.finished_at = dt.datetime.now(dt.UTC)
         db.commit()
 

@@ -239,6 +239,16 @@ the *other* job: it reports the minor contract revision so `catalog_sync`
 can fail loudly on something it does not recognize, rather than silently
 mis-parsing. Two mechanisms, two distinct jobs.
 
+**This app reads `/api/v3` since 2026-10-26 (D53).** v2 (2026-09-08)
+dropped `es_servicios`, which this app never read. v3 adds what it does
+read: a product's compras carry the lines typed on a factura física beside
+the electronic ones, each keyed on its factura (`origen`,
+`factura_fisica_id`) with no clave, and a served line is a current figure
+that an edit upstream restates, moves or removes. Every request carries
+the key upstream's Ajustes → API y MCP made for this app, in `X-Api-Key`
+(`UPSTREAM_API_KEY`); without one upstream answers 401. The endpoints
+below keep their paths under every version.
+
 ```
 GET /api/v1/version
     -> {"app": "restaurant-manager", "api": "1.0", "schema_hint": "<date>"}
@@ -335,9 +345,13 @@ change:**
 
 `services/catalog_sync.py` pulls with `modificados_desde` = the last
 successful sync watermark, upserts `catalog_product` on `internal_code`,
-and appends `catalog_price_point` rows keyed `(clave, numero_linea)` —
-the same natural key upstream uses, so a re-sync is idempotent by
-construction and a full rebuild is `DELETE` + re-pull.
+and makes each walked product's `catalog_price_point` rows the lines
+upstream serves for it, keyed by the line -- `(clave, numero_linea)` for
+an electronic one, `(factura_fisica_id, numero_linea)` for one typed on a
+factura física, upstream's own natural keys: new lines inserted, restated
+or moved ones updated in place, lines no longer served deleted (D53). A
+re-sync is idempotent by construction and a full rebuild is `DELETE` +
+re-pull.
 
 Manual button in Ajustes plus a scheduled pull; the watermark, last run,
 row counts and any error are visible on that page. **Sync failure never
@@ -1385,3 +1399,4 @@ archaeology problem.
 | D21 | Phase 2 strips an all-in menu price with **one constant, `/1.23`** — every price is set as base + 13% IVA + 10% servicio, both on the base | Operator's own pricing rule, verified against 620 days: IVA is exactly 13.00% of `subtotal − descuento` on 617 of them and never above, while IVA ÷ (subtotal + servicio) is 11.86% — so servicio is not in the IVA base and the divisor is 1.23, not 1.243. **Supersedes this row's first draft**, which called for per-plato `lleva_servicio`/`iva_pct` flags: that was inferred from aggregate ratios below 10%/13%, and the gap is the sales mix (takeout carries no servicio), not the pricing rule. Corollary: never apply `/1.23` to aggregate sales — servicio there ranges 6.24-10.00% of subtotal daily; use the file's own `Subtotal − Descuento` | 2026-09-02 | Confirmed (revised same day) |
 | D32 | The cost history can be **seeded** for past dates, and every seeded point says so | A stored-only history (D13) leaves the card empty for months and, on a new install, for a year — the chart cannot answer "is this plate getting more expensive" until long after anyone stopped asking. The seed uses each day's *real* prices (`costing.py` already windows on `hoy`); what is today's is the recipe and the mappings, so a seeded point is an estimate and is drawn as one — hollow marker, dashed segment, a count and an explanation on the card. It never overwrites an observed row, so re-running it cannot turn history into estimates. No new column: `computed_at > fecha` already *means* "computed after the fact". D15 (a column then cost a hand-written ALTER TABLE) made that cheap to prefer; under D52 it is no longer forced, and it is still the right shape — the marker is a fact about the row, not a flag beside it. **This does not weaken D13**, which forbids recomputing at *render* time — that is what would make the past move every time a merma is edited. This runs once, on a button, and what it writes is then as fixed as any other row | 2026-09-02 | Confirmed |
 | D52 | **Alembic owns the schema**, replacing `create_all`; `init_db` is deleted outright and `alembic upgrade head` runs before uvicorn in the compose `command`. Supersedes D15 | D15 took upstream's debt knowingly and upstream paid it off on 2026-09-07, leaving this app the only half of the pair on `create_all` — and D2 exists so the two repos do not need two sets of habits. The timing is the decision, not the tool: a baseline costs nothing while the schema still matches the models, and it never gets cheaper. Upstream's own pre-stamp audit found **six** latent differences after a year of hand-applied `ALTER`s, none of which had ever produced a wrong figure — which is why nobody had found them. The equivalent three-way diff here (baseline vs `create_all` vs live, column/index/constraint at a time) came back identical, so this was paid at the one moment it was free. `init_db` goes rather than being hollowed out because this app has no seed data at all: `app_setting`'s single row is created lazily by `mapeo._fila_ajustes`, so the column defaults *are* the app defaults on a fresh install and an old one alike. The live database was moved with `alembic stamp`, never by running the baseline | 2026-09-07 | Confirmed |
+| D53 | **The app reads upstream's `/api/v3`: a line typed on a factura física is mirrored keyed on its factura, and a product's mirrored lines are reconciled with what upstream serves -- inserted, updated in place, deleted -- never only appended. Every request carries upstream's API key (`UPSTREAM_API_KEY`, sent as `X-Api-Key`).** | Upstream 0.309 (its D204) serves the typed lines only in v3, keyed `(factura_fisica_id, numero_linea)` since a typed line has no clave, and states that a served line is a current figure: an edit of its factura restates it, moves it to another product or removes it, and an Ajuste de cantidades restates an electronic one -- which the append-only sync never took in, so a corrected price stayed in a plate's cost for ever. Each such edit stamps the products it touches, so the incremental pull the sync already makes is the signal, and a product's compras walked whole are its current lines. **Figures compared at their column's scale**: upstream may send more decimals than a column keeps (a quantity weighed to four places, here three), and compared raw such a line would read as restated on every sync. **The key**: upstream requires it since its D107 and this app never sent one, so every sync had been a 401. **The first sync after the migration walks the whole catalog** (it clears `upstream_updated_at`), so restatements made before it are taken in. Verified against a clone of live: 1,695 products and 19,137 lines, 2 of them typed; an edit of the factura restating its line on the next incremental pull, in place; a full re-walk of the 19,135 existing lines restating none. | 2026-10-26 | Built; `tests/test_catalog_sync.py`, migration `cb3a0f10e839` |

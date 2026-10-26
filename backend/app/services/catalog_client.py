@@ -1,4 +1,4 @@
-"""HTTP client for `restaurant-manager`'s `/api/v2`. Network only -- it
+"""HTTP client for `restaurant-manager`'s `/api/v3`. Network only -- it
 knows how to *fetch* the catalog and nothing about what this app does with
 it, the same way upstream keeps `gmail.py` (network) apart from
 `gmail_match.py` (logic).
@@ -59,13 +59,21 @@ class ContractMismatch(RuntimeError):
 # bump declares which contract we speak; it is not a payload change we
 # had to absorb.
 #
+# **Moved 2 -> 3 on 2026-10-26** (D53), when upstream published `/api/v3`:
+# a product's compras carry the lines typed on a factura física beside the
+# electronic ones, each typed line with no clave, keyed on its factura
+# (`origen`, `factura_fisica_id`), and a served line is a current figure
+# that an edit upstream restates, moves or removes. That one is a change
+# this app had to absorb: `catalog_sync` keys a line by its origin and
+# reconciles each product instead of only appending.
+#
 # **Upgrade order matters, in one direction only.** This refuses a server
 # whose major it does not recognise, so restaurant-manager must already be
-# serving v2 before this app is pointed at it. The reverse is safe: an
-# older menu-builder keeps working against a newer server, because v1 is
-# still served and unchanged. That asymmetry is the whole reason upstream
-# added a path instead of editing v1.
-SUPPORTED_MAJOR = 2
+# serving v3 before this app is pointed at it. The reverse is safe: an
+# older menu-builder keeps working against a newer server, because v1 and
+# v2 are still served and unchanged. That asymmetry is the whole reason
+# upstream adds a path instead of editing a served one.
+SUPPORTED_MAJOR = 3
 
 
 class CatalogClient:
@@ -77,9 +85,13 @@ class CatalogClient:
     would spend most of the sync in TCP setup.
     """
 
-    def __init__(self, base_url: str, timeout_seconds: int = 15) -> None:
+    def __init__(self, base_url: str, timeout_seconds: int = 15, api_key: str = "") -> None:
         self.base_url = base_url.rstrip("/")
-        self._client = httpx.Client(timeout=timeout_seconds)
+        # Upstream's `/api` opens to an active key in `X-Api-Key` and to
+        # nothing else (its D107); sent on every request, never in the URL,
+        # where a server log would keep it.
+        headers = {"X-Api-Key": api_key} if api_key else {}
+        self._client = httpx.Client(timeout=timeout_seconds, headers=headers)
 
     def __enter__(self) -> CatalogClient:
         return self
@@ -96,6 +108,11 @@ class CatalogClient:
             resp = self._client.get(url, params=params or {})
         except httpx.HTTPError as exc:
             raise CatalogUnavailable(f"No se pudo conectar con {url}: {exc}") from exc
+        if resp.status_code == 401:
+            raise CatalogUnavailable(
+                f"{url} respondió 401: falta la clave de API o no está activa. Creala en "
+                f"restaurant-manager (Ajustes → API y MCP) y ponela en UPSTREAM_API_KEY."
+            )
         if resp.status_code != 200:
             raise CatalogUnavailable(f"{url} respondió {resp.status_code}")
         try:

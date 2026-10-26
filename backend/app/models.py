@@ -103,9 +103,14 @@ class CatalogProduct(Base):
 class CatalogPricePoint(Base):
     """One price observation, mirrored from upstream's `product_purchase`.
 
-    Keyed `(clave, numero_linea)` -- upstream's own natural key for an
-    invoice line -- so a re-sync is idempotent by construction and a full
-    rebuild is DELETE plus re-pull.
+    Keyed by the line it mirrors (D53): an electronic line by `(clave,
+    numero_linea)`, upstream's own natural key for an invoice line, and a
+    line typed on a factura física -- which has no clave -- by
+    `(factura_fisica_id, numero_linea)`, `origen` saying which. Since
+    upstream's v3 a served line is a current figure: `catalog_sync` updates
+    it in place when upstream restates it and deletes it when upstream
+    stops serving it, so a re-sync stays idempotent and a full rebuild is
+    still DELETE plus re-pull.
 
     Notas de crédito are already absent: upstream's non-negotiable #5 means
     their lines never became a `ProductPurchase` at all. Do not try to net
@@ -119,7 +124,9 @@ class CatalogPricePoint(Base):
         ForeignKey("catalog_product.id", ondelete="CASCADE"), index=True
     )
 
-    clave: Mapped[str] = mapped_column(String(50), index=True)
+    origen: Mapped[str] = mapped_column(String(12), default="electronica")  # electronica|fisica
+    clave: Mapped[str | None] = mapped_column(String(50), index=True)
+    factura_fisica_id: Mapped[int | None] = mapped_column(Integer)
     numero_linea: Mapped[int] = mapped_column(Integer)
     fecha: Mapped[dt.date] = mapped_column(Date, index=True)  # FechaEmision
 
@@ -145,7 +152,16 @@ class CatalogPricePoint(Base):
     product: Mapped[CatalogProduct] = relationship(back_populates="price_points")
 
     __table_args__ = (
+        # A NULL never collides in a unique constraint, on Postgres or
+        # SQLite alike, so each constraint holds its own kind of line and
+        # lets the other kind through.
         UniqueConstraint("clave", "numero_linea", name="uq_price_point_clave_linea"),
+        UniqueConstraint("factura_fisica_id", "numero_linea", name="uq_price_point_fisica_linea"),
+        CheckConstraint(
+            "(origen = 'electronica' AND clave IS NOT NULL AND factura_fisica_id IS NULL)"
+            " OR (origen = 'fisica' AND factura_fisica_id IS NOT NULL AND clave IS NULL)",
+            name="ck_price_point_origen",
+        ),
     )
 
 
@@ -165,6 +181,11 @@ class CatalogSyncRun(Base):
     watermark: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     productos_upserted: Mapped[int] = mapped_column(Integer, default=0)
     precios_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    # Lines upstream restated or moved to another product, and lines it no
+    # longer serves, gone from the mirror (D53): a sync that changes a price
+    # already costed says so on Ajustes.
+    precios_actualizados: Mapped[int] = mapped_column(Integer, default=0)
+    precios_borrados: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text)
 
 

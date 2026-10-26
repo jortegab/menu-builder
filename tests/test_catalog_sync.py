@@ -4,6 +4,19 @@ Weighted toward the quiet failures, since the mirror is what every cost is
 ultimately computed from: a price parsed as a float, a null that should
 have stayed null, a re-sync that duplicates rows, or a failed sync that
 takes the app down with it instead of just aging.
+
+Since upstream's v3 (D53): a line typed on a factura física stored on its
+factura beside the electronic ones, and a served line kept as the current
+figure -- restated in place, deleted once upstream stops serving it for a
+product, following its product when an edit moves it whichever product is
+walked first, and never counted as restated for decimals its column does
+not keep. And the client: the key in its header, a 401 that says which
+setting is missing, v3 spoken.
+
+Those confirmed against mutants, each turning the run red: restated lines
+left as they were; lines no longer served kept; figures compared
+unrounded; a typed line keyed by its missing clave; a moved line never
+looked up; no key sent; still speaking v2.
 """
 
 from __future__ import annotations
@@ -16,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dbcase import DbTestCase, FakeCatalogClient, compra, producto  # noqa: E402
+from dbcase import DbTestCase, FakeCatalogClient, compra, compra_fisica, producto  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
@@ -272,6 +285,111 @@ class TestFailureIsNotAnErrorState(DbTestCase):
         catalog_sync.sync_catalog(self.db, FakeCatalogClient(fail_on="version"))
         estados = sorted(r.status for r in self.db.scalars(select_all(CatalogSyncRun)))
         self.assertEqual(estados, ["error", "ok"])
+
+
+class TestV3Lines(DbTestCase):
+    """v3 (D53): a typed line stored on its factura, and a served line as a
+    current figure."""
+
+    def _sync(self, compras, productos=None):
+        productos = productos or [producto(1)]
+        return catalog_sync.sync_catalog(self.db, FakeCatalogClient(productos, compras), full=True)
+
+    def _puntos(self) -> list[CatalogPricePoint]:
+        from sqlalchemy import select
+
+        return list(self.db.scalars(select(CatalogPricePoint).order_by(CatalogPricePoint.id)))
+
+    def _dos_productos(self):
+        return [producto(1, internal_code="11-0001"), producto(2, internal_code="11-0002")]
+
+    def _codigo_de(self, punto) -> str:
+        return self.db.get(CatalogProduct, punto.catalog_product_id).internal_code
+
+    def test_a_typed_line_is_stored_on_its_factura_beside_an_electronic_one(self):
+        run = self._sync({1: [compra(numero_linea=1), compra_fisica(88, 1)]})
+        self.assertEqual(run.precios_inserted, 2)
+        por_origen = {p.origen: p for p in self._puntos()}
+        fisica = por_origen["fisica"]
+        self.assertEqual(
+            (fisica.clave, fisica.factura_fisica_id, fisica.numero_linea), (None, 88, 1)
+        )
+        self.assertIsNone(por_origen["electronica"].factura_fisica_id)
+
+    def test_lines_of_one_number_on_different_documents_all_stand(self):
+        self._sync({1: [compra(numero_linea=1), compra_fisica(88, 1), compra_fisica(89, 1)]})
+        self.assertEqual(len(self._puntos()), 3)
+
+    def test_a_restated_line_is_updated_in_place(self):
+        self._sync({1: [compra_fisica(88, 1, precio="1000.0000", crc="1000.0000")]})
+        [antes] = self._puntos()
+        run = self._sync({1: [compra_fisica(88, 1, precio="1100.0000", crc="1100.0000")]})
+        [despues] = self._puntos()
+        self.assertEqual(despues.id, antes.id)
+        self.assertEqual(despues.precio_efectivo_normalizado_crc, Decimal("1100"))
+        cuenta = (run.precios_inserted, run.precios_actualizados, run.precios_borrados)
+        self.assertEqual(cuenta, (0, 1, 0))
+
+    def test_a_line_no_longer_served_is_deleted(self):
+        self._sync({1: [compra(numero_linea=1), compra_fisica(88, 1)]})
+        run = self._sync({1: [compra(numero_linea=1)]})
+        self.assertEqual([p.origen for p in self._puntos()], ["electronica"])
+        self.assertEqual(run.precios_borrados, 1)
+
+    def test_a_line_moved_off_the_product_walked_first_lands_on_the_other(self):
+        self._sync({1: [compra_fisica(88, 2)], 2: []}, self._dos_productos())
+        run = self._sync({1: [], 2: [compra_fisica(88, 2)]}, self._dos_productos())
+        [punto] = self._puntos()
+        self.assertEqual(self._codigo_de(punto), "11-0002")
+        self.assertEqual((run.precios_borrados, run.precios_inserted), (1, 1))
+
+    def test_a_line_moved_onto_the_product_walked_first_is_taken_in_place(self):
+        self._sync({1: [], 2: [compra_fisica(88, 2)]}, self._dos_productos())
+        [antes] = self._puntos()
+        run = self._sync({1: [compra_fisica(88, 2)], 2: []}, self._dos_productos())
+        [despues] = self._puntos()
+        self.assertEqual((despues.id, self._codigo_de(despues)), (antes.id, "11-0001"))
+        cuenta = (run.precios_actualizados, run.precios_borrados, run.precios_inserted)
+        self.assertEqual(cuenta, (1, 0, 0))
+
+    def test_decimals_the_column_does_not_keep_are_no_restatement(self):
+        self._sync({1: [compra(numero_linea=1, cantidad="3.4567")]})
+        run = self._sync({1: [compra(numero_linea=1, cantidad="3.4567")]})
+        self.assertEqual(run.precios_actualizados, 0)
+        [punto] = self._puntos()
+        self.assertEqual(punto.cantidad, Decimal("3.457"))
+
+
+class TestClient(unittest.TestCase):
+    """The key upstream's `/api` opens to (its D107), and the contract
+    spoken."""
+
+    def test_the_key_travels_in_its_header_and_nowhere_when_blank(self):
+        from app.services.catalog_client import CatalogClient
+
+        with CatalogClient("http://upstream/api/v3", api_key="rm_abc") as client:
+            self.assertEqual(client._client.headers.get("X-Api-Key"), "rm_abc")
+        with CatalogClient("http://upstream/api/v3") as client:
+            self.assertNotIn("X-Api-Key", client._client.headers)
+
+    def test_a_401_names_the_missing_key(self):
+        import httpx
+        from app.services.catalog_client import CatalogClient, CatalogUnavailable
+
+        def responde_401(url, params=None):
+            return httpx.Response(401, request=httpx.Request("GET", url))
+
+        with CatalogClient("http://upstream/api/v3") as client:
+            client._client.get = responde_401
+            with self.assertRaises(CatalogUnavailable) as ctx:
+                client.version()
+        self.assertIn("UPSTREAM_API_KEY", str(ctx.exception))
+
+    def test_the_app_speaks_v3(self):
+        from app.config import Settings
+
+        self.assertEqual(SUPPORTED_MAJOR, 3)
+        self.assertTrue(Settings.model_fields["upstream_api_url"].default.endswith("/api/v3"))
 
 
 # -- small query helpers, kept out of the tests themselves ----------------
