@@ -1,0 +1,19 @@
+{#- Opened into #modal-host by «Agrupar catálogo». `data-block-close` blocks
+    Escape for the dialog's whole life, as upstream's recategorize modal
+    does and for the same reason: the pass takes minutes, and nothing should
+    let the operator wander off mid-run and lose track of it. The way out is
+    the «Cerrar» button `_agrupar_estado.html` renders once it finishes.
+
+    Closing it does not stop the pass -- it commits per product, so whatever
+    it resolved is already saved. -#}
+<dialog class="sheet" aria-labelledby="agrupar-title" data-block-close>
+  <div class="sheet__head">
+    <h2 class="sheet__title" id="agrupar-title">Agrupando productos parecidos</h2>
+  </div>
+  <div class="sheet__body">
+    <div id="agrupar-modal-body">
+      {% set poll_target = 'modal' %}
+      {% include "ajustes/_agrupar_estado.html" with context %}
+    </div>
+  </div>
+</dialog>

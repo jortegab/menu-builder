@@ -380,3 +380,89 @@ class Cache(CosteoTestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ModoSimulador(CosteoTestCase):
+    """§3.9 / D42. The mode's whole promise is that it writes nothing, and
+    the failure it must never have is a simulated cost surviving into a
+    table the rest of the app reads as truth."""
+
+    def setUp(self):
+        super().setUp()
+        self.pechuga = self.insumo_con_precio("Pechuga", "g", "4")
+        self.plato = svc.create(
+            self.db, nombre="Pollo", tipo="plato", porciones="1"
+        )
+        self.linea = svc.agregar_linea(
+            self.db, self.plato, tipo_componente="insumo",
+            componente_id=self.pechuga.id, cantidad="180",
+        )
+
+    def sim(self, cantidades):
+        return receta_costs.simular(self.db, self.plato, cantidades, hoy=HOY)
+
+    def test_devuelve_los_dos_numeros_lado_a_lado(self):
+        s = self.sim({self.linea.id: Decimal(160)})
+        self.assertEqual(s.actual.costo_total, Decimal("720.00"))
+        self.assertEqual(s.simulada.costo_total, Decimal("640.00"))
+
+    def test_no_escribe_absolutamente_nada(self):
+        """Not "does not write if you are careful": the substitution happens
+        on frozen dataclasses between `cargar_grafo` and `cost_recipe`, so
+        there is no write path in there to get wrong."""
+        self.sim({self.linea.id: Decimal(999)})
+        self.db.expire_all()
+        fresca = self.db.get(RecetaLinea, self.linea.id)
+        self.assertEqual(fresca.cantidad, Decimal("180.0000"))
+
+    def test_una_simulacion_no_puede_llegar_al_historico(self):
+        """D42's third constraint, and the one whose violation would be
+        invisible on screen. `receta_costo_historico` is the app's record of
+        what a plate actually cost on a given day; a snapshot that picked up
+        somebody's half-finished "what if" would be a wrong number that
+        looks exactly like a right one."""
+        from sqlalchemy import select
+
+        from app.models import RecetaCostoHistorico
+        from app.services import receta_historico
+
+        self.sim({self.linea.id: Decimal(999)})
+        receta_historico.instantanea(self.db, fecha=HOY)
+
+        filas = list(self.db.scalars(select(RecetaCostoHistorico)))
+        self.assertEqual(len(filas), 1)
+        # 180 g at ₡4, not the 999 g anybody simulated.
+        self.assertEqual(filas[0].costo_total, Decimal("720.00"))
+
+    def test_el_grafo_cargado_no_queda_modificado(self):
+        """The caller costs the unmodified graph too, to show both figures
+        side by side -- so the substitution has to build new objects rather
+        than mutate the ones it was handed."""
+        s = self.sim({self.linea.id: Decimal(1)})
+        self.assertNotEqual(s.actual.costo_total, s.simulada.costo_total)
+        # And the real thing is still the real thing afterwards.
+        self.assertEqual(self.costear(self.plato).costo_total, Decimal("720.00"))
+
+    def test_simular_una_preparacion_nombra_a_quien_arrastra(self):
+        """«Esta salsa sale 8% más barata» is not the decision anyone is
+        making; «estos platos bajan esto» is."""
+        salsa = svc.create(
+            self.db, nombre="Salsa", tipo="preparacion",
+            rendimiento_cantidad="1000", rendimiento_unidad="g",
+        )
+        interna = svc.agregar_linea(
+            self.db, salsa, tipo_componente="insumo",
+            componente_id=self.pechuga.id, cantidad="500",
+        )
+        svc.agregar_linea(
+            self.db, self.plato, tipo_componente="receta",
+            componente_id=salsa.id, cantidad="100", unidad="g",
+        )
+
+        s = receta_costs.simular(
+            self.db, salsa, {interna.id: Decimal(250)}, hoy=HOY
+        )
+        nombres = [r.nombre for r, _antes, _despues in s.afectadas]
+        self.assertEqual(nombres, ["Pollo"])
+        antes, despues = s.afectadas[0][1], s.afectadas[0][2]
+        self.assertLess(despues.costo_total, antes.costo_total)

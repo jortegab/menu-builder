@@ -1,0 +1,86 @@
+{#- Feather-style icons: 24-unit grid, stroked with currentColor, so an
+    icon takes the colour of whatever it sits in (--muted in a rail link,
+    --alert in a .btn--danger) with no per-use styling.
+
+    upstream inlines its path data directly in base.html, which is why
+    that file is 38 KB. This app needs more icons in more places -- the
+    rail, the drag handles, the steppers, the delete buttons, the view
+    toggle -- so they live here as one macro instead (DESIGN.md D36).
+    `{{ icon('trash') }}`, never six lines of <polyline>.
+
+    An unknown name renders nothing rather than raising: a missing icon is
+    a cosmetic bug, and 500-ing a daily page over one would not be. -#}
+
+{% macro icon(name, size=16) -%}
+{%- if name == 'grip' -%}
+{#- The one filled icon: six dots read as a grab handle at 14px where a
+    stroked one turns to mush. -#}
+<svg class="ico" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+{%- else -%}
+<svg class="ico" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == 'menu' -%}
+<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+{%- elif name == 'layers' -%}
+<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+{%- elif name == 'package' -%}
+<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+{%- elif name == 'link' -%}
+<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+{%- elif name == 'settings' -%}
+<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+{%- elif name == 'search' -%}
+<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+{%- elif name == 'plus' -%}
+<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+{%- elif name == 'minus' -%}
+<line x1="5" y1="12" x2="19" y2="12"/>
+{%- elif name == 'trash' -%}
+<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+{%- elif name == 'x' -%}
+<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+{%- elif name == 'chevron-left' -%}
+<polyline points="15 18 9 12 15 6"/>
+{%- elif name == 'chevron-right' -%}
+<polyline points="9 18 15 12 9 6"/>
+{%- elif name == 'chevron-up' -%}
+<polyline points="18 15 12 9 6 15"/>
+{%- elif name == 'chevron-down' -%}
+<polyline points="6 9 12 15 18 9"/>
+{%- elif name == 'arrow-right' -%}
+<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+{%- elif name == 'list' -%}
+<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+{%- elif name == 'grid' -%}
+<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+{%- elif name == 'refresh' -%}
+<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+{%- elif name == 'info' -%}
+<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+{%- elif name == 'alert' -%}
+<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+{%- elif name == 'check' -%}
+<polyline points="20 6 9 17 4 12"/>
+{%- elif name == 'bulb' -%}
+<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+{%- elif name == 'scissors' -%}
+<circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>
+{%- elif name == 'book' -%}
+<path d="M2 3h5.5A3.5 3.5 0 0 1 11 6.5V21a3 3 0 0 0-3-2.4H2z"/><path d="M22 3h-5.5A3.5 3.5 0 0 0 13 6.5V21a3 3 0 0 1 3-2.4h6z"/>
+{%- elif name == 'tag' -%}
+<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>
+{%- elif name == 'scale' -%}
+<line x1="12" y1="4" x2="12" y2="21"/><line x1="6" y1="21" x2="18" y2="21"/><line x1="4" y1="7" x2="20" y2="7"/><circle cx="12" cy="5" r="1.6"/><path d="M4 7 1.6 12.4h4.8z"/><path d="M20 7l-2.4 5.4h4.8z"/>
+{%- elif name == 'chart' -%}
+<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+{%- elif name == 'note' -%}
+<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+{%- elif name == 'beaker' -%}
+<line x1="9" y1="3" x2="15" y2="3"/><path d="M10 3v6.2L4.6 18A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-3L14 9.2V3"/><line x1="7.2" y1="15" x2="16.8" y2="15"/>
+{%- elif name == 'pie' -%}
+<path d="M21.2 15.9A10 10 0 1 1 8 2.8"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+{%- elif name == 'chef' -%}
+<path d="M6 21h12"/><path d="M7 17h10v-4H7z"/><path d="M7 13a4 4 0 0 1-1-7.9A3.5 3.5 0 0 1 12 3a3.5 3.5 0 0 1 6 2.1A4 4 0 0 1 17 13"/>
+{%- endif -%}
+</svg>
+{%- endif -%}
+{%- endmacro %}

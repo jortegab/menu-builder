@@ -1,58 +1,61 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% set seccion = 'insumos' %}
 {% block title %}{{ insumo.nombre }} · Menu Builder{% endblock %}
 {% block heading %}{{ insumo.nombre }}{% if not insumo.activo %} <span class="pip">Archivado</span>{% endif %}{% endblock %}
+{% block subheading %}
+<p class="head__sub">
+  {% if insumo.categoria_slug %}<span class="pip">{{ categoria_nombre(request, insumo.categoria_slug) }}</span> {% endif %}
+  <code>{{ insumo.slug }}</code>
+</p>
+{% endblock %}
+{% block acciones %}
+<a class="btn btn--ghost" href="/insumos/{{ insumo.id }}/editar">Editar</a>
+<form method="post" action="/insumos/{{ insumo.id }}/archivar">
+  <input type="hidden" name="activo" value="{{ '0' if insumo.activo else '1' }}">
+  <button class="btn btn--ghost" type="submit">
+    {{ 'Archivar' if insumo.activo else 'Reactivar' }}
+  </button>
+</form>
+{% endblock %}
 {% block content %}
 
-<div class="toolbar">
-  <div class="muted small">
-    {% if insumo.categoria_slug %}{{ insumo.categoria_slug }} · {% endif %}
-    <code>{{ insumo.slug }}</code>
-  </div>
-  <div class="actions">
-    <a class="btn btn--ghost" href="/insumos/{{ insumo.id }}/editar">Editar</a>
-    <form method="post" action="/insumos/{{ insumo.id }}/archivar">
-      <input type="hidden" name="activo" value="{{ '0' if insumo.activo else '1' }}">
-      <button class="btn btn--ghost" type="submit">
-        {{ 'Archivar' if insumo.activo else 'Reactivar' }}
-      </button>
-    </form>
-  </div>
-</div>
-
 <div class="card">
-  <h2 class="card__title">Cómo se costea</h2>
-  <p class="muted small">
+  <div class="bloque__h">
+    <span class="bloque__ico">{{ icon('scale') }}</span>
+    <h2 class="card__h">Cómo se costea</h2>
+  </div>
+  <p class="c-muted small">
     La unidad base es cómo se guarda el costo. Las recetas piden lo que les
     sirva (kg, g, oz para peso; L, ml, oz líquidas para volumen) y se
     convierte solo.
   </p>
-  <div class="kpis">
+  <div class="kpi-grid">
     <div class="kpi">
-      <div class="kpi__label">Unidad base (costeo)</div>
-      <div class="kpi__value kpi__value--sm">{{ UNIDAD_LABELS.get(insumo.unidad_base, insumo.unidad_base) }}</div>
+      <div class="kpi__k">Unidad base (costeo)</div>
+      <div class="kpi__v kpi__v--sm">{{ UNIDAD_LABELS.get(insumo.unidad_base, insumo.unidad_base) }}</div>
     </div>
     <div class="kpi">
-      <div class="kpi__label">Merma</div>
-      <div class="kpi__value kpi__value--sm">{{ insumo.merma_pct | pct }}</div>
+      <div class="kpi__k">Merma</div>
+      <div class="kpi__v kpi__v--sm">{{ insumo.merma_pct | pct }}</div>
     </div>
     <div class="kpi">
-      <div class="kpi__label">Método</div>
-      <div class="kpi__value kpi__value--sm">
+      <div class="kpi__k">Método</div>
+      <div class="kpi__v kpi__v--sm">
         {{ METODO_LABELS.get(insumo.metodo_costeo or metodo_default) }}
-        {% if not insumo.metodo_costeo %}<span class="muted small">(por defecto)</span>{% endif %}
+        {% if not insumo.metodo_costeo %}<span class="c-muted small">(por defecto)</span>{% endif %}
       </div>
     </div>
     <div class="kpi">
-      <div class="kpi__label">Ventana</div>
-      <div class="kpi__value kpi__value--sm">
+      <div class="kpi__k">Ventana</div>
+      <div class="kpi__v kpi__v--sm">
         {{ insumo.ventana_dias or ventana_default }} días
-        {% if not insumo.ventana_dias %}<span class="muted small">(por defecto)</span>{% endif %}
+        {% if not insumo.ventana_dias %}<span class="c-muted small">(por defecto)</span>{% endif %}
       </div>
     </div>
   </div>
   {% if insumo.merma_pct and insumo.merma_pct > 0 %}
-  <p class="muted small">
+  <p class="c-muted small">
     Con {{ insumo.merma_pct | pct }} de merma, el costo se reparte entre lo
     que sobrevive: un precio de compra de ₡1 000 por
     {{ insumo.unidad_base }} sale a
@@ -63,18 +66,21 @@
 </div>
 
 <div class="card">
-  <h2 class="card__title">Costo</h2>
+  <div class="bloque__h">
+    <span class="bloque__ico">{{ icon('chart') }}</span>
+    <h2 class="card__h">Costo</h2>
+  </div>
   {% if exp.costo.valor is not none %}
     <div class="costo">
       <div class="costo__cifra">{{ exp.costo.valor | money }}</div>
       <div class="costo__unidad">por {{ insumo.unidad_base }} usable</div>
     </div>
-    <p class="muted small">
+    <p class="c-muted small">
       {{ METODO_LABELS.get(exp.metodo) }} sobre {{ exp.costo.observaciones_usadas }}
       compra(s){% if exp.metodo != 'last' %} de los últimos {{ exp.ventana_dias }} días{% endif %}{% if exp.merma_pct %}, con {{ exp.merma_pct | pct }} de merma aplicada{% endif %}.
     </p>
     {% if exp.costo.precio_viejo %}
-    <p class="aviso aviso--warn">
+    <p class="flash flash--warn">
       No hay compras dentro de la ventana. Se está usando la más reciente que
       hay, de hace {{ exp.costo.antiguedad_dias }} días — puede que este
       insumo ya no se compre.
@@ -92,33 +98,53 @@
     </p>
   {% endif %}
 
-  {% if exp.hay_advertencias %}
-  <ul class="muted small">
-    {% if exp.fuentes_sin_factor %}<li>{{ exp.fuentes_sin_factor }} fuente(s) sin factor de conversión, excluidas del cálculo.</li>{% endif %}
-    {% if exp.descartadas_sin_tipo_cambio %}<li>{{ exp.descartadas_sin_tipo_cambio }} compra(s) en dólares sin tipo de cambio del día, descartadas.</li>{% endif %}
-  </ul>
+  {#- The exclusions were a muted <ul> at the foot of this card. They are
+      the load-bearing sentence on the whole screen (D45): an insumo that
+      costs less than it should *because half its sources were skipped*
+      reads as a perfectly plausible number, and this is the only thing
+      that says otherwise. Amber, because it is a queue — the operator
+      clears it by resolving a factor — and not a bad number. -#}
+  {% if exp.fuentes_sin_factor or exp.descartadas_sin_tipo_cambio %}
+  <div class="flash flash--warn">
+    <strong>Este costo no usa todo lo que hay.</strong>
+    {% if exp.fuentes_sin_factor %}
+      {{ exp.fuentes_sin_factor }} fuente{{ 's' if exp.fuentes_sin_factor != 1 }} sin
+      factor de conversión, así que
+      {{ 'quedan' if exp.fuentes_sin_factor != 1 else 'queda' }} fuera del
+      cálculo — nunca se asume 1, porque eso costearía el paquete entero
+      como si fuera una unidad de uso.
+    {% endif %}
+    {% if exp.descartadas_sin_tipo_cambio %}
+      {{ exp.descartadas_sin_tipo_cambio }} compra{{ 's' if exp.descartadas_sin_tipo_cambio != 1 }}
+      en dólares sin tipo de cambio del día,
+      descartada{{ 's' if exp.descartadas_sin_tipo_cambio != 1 }}.
+    {% endif %}
+  </div>
   {% endif %}
 </div>
 
 <div class="card">
-  <h2 class="card__title">¿Por qué este costo?</h2>
-  <p class="muted small">
+  <div class="bloque__h">
+    <span class="bloque__ico">{{ icon('bulb') }}</span>
+    <h2 class="card__h">¿Por qué este costo?</h2>
+  </div>
+  <p class="c-muted small">
     Cada número de arriba sale de acá. Si algo no cuadra, la fila que lo
     causa está en esta tabla.
   </p>
 
-  <h3 class="sub">Fuentes</h3>
+  <p class="hr-label"><span class="hr-label__caps">Fuentes</span></p>
   {% if exp.fuentes %}
   <table class="grid">
-    <thead><tr><th>Producto</th><th>Proveedor</th><th class="num">Factor</th><th>Origen</th><th class="num">Compras</th><th>Estado</th></tr></thead>
+    <thead><tr><th>Producto</th><th>Proveedor</th><th class="ta-r">Factor</th><th>Origen</th><th class="ta-r">Compras</th><th>Estado</th></tr></thead>
     <tbody>
       {% for f in exp.fuentes %}
       <tr>
         <td>{{ f.producto.description }}</td>
-        <td class="muted small">{{ f.producto.supplier_nombre[:26] }}</td>
-        <td class="num">{% if f.fuente.factor_conversion %}{{ f.fuente.factor_conversion | cantidad }} {{ insumo.unidad_base }}{% else %}—{% endif %}</td>
-        <td class="muted small">{{ f.fuente.factor_origen }}</td>
-        <td class="num">{{ f.observaciones }}</td>
+        <td class="c-muted small">{{ f.producto.supplier_nombre[:26] }}</td>
+        <td class="ta-r">{% if f.fuente.factor_conversion %}{{ f.fuente.factor_conversion | cantidad }} {{ insumo.unidad_base }}{% else %}—{% endif %}</td>
+        <td class="c-muted small">{{ f.fuente.factor_origen }}</td>
+        <td class="ta-r">{{ f.observaciones }}</td>
         <td>{% if f.usable %}<span class="pip pip--ok">en uso</span>{% else %}<span class="pip pip--warn">{{ f.motivo }}</span>{% endif %}</td>
       </tr>
       {% endfor %}
@@ -126,32 +152,58 @@
   </table>
   {% else %}<p class="empty">Ninguna.</p>{% endif %}
 
+  {#- D45: the summary is not a label for the table, it is the sentence the
+      table exists to support — how many purchases the figure is actually
+      standing on, and how many were outside the window and therefore
+      shown-and-marked rather than used. The forty rows behind it are the
+      derivation, and a derivation folds. -#}
   {% if exp.observaciones %}
-  <h3 class="sub">Compras ({{ exp.observaciones | length }})</h3>
+  {% set fuera = exp.observaciones | rejectattr('en_ventana') | list | length %}
+  <details class="ayuda">
+    <summary class="ayuda__q">
+      {{ icon('chevron-right', 14) }}
+      {{ exp.costo.observaciones_usadas }} de {{ exp.observaciones | length }} compras
+      sostienen esta cifra{% if fuera %}; {{ fuera }} {{ 'quedan' if fuera != 1 else 'queda' }}
+      fuera de la ventana y {{ 'se muestran' if fuera != 1 else 'se muestra' }} igual{% endif %}
+    </summary>
+    <div class="ayuda__b">
+      <p>
+        Cada fila es una línea de factura. El precio normalizado es el de
+        upstream por unidad comercial; dividido entre el factor da el precio
+        por {{ insumo.unidad_base }}, que es lo que
+        {{ METODO_LABELS.get(exp.metodo) | lower }} resume en la cifra de
+        arriba. Las de fuera de la ventana están para que se vea por qué no
+        entraron, no escondidas.
+      </p>
   <table class="grid">
-    <thead><tr><th>Fecha</th><th>Proveedor</th><th class="num">Precio normalizado</th><th class="num">÷ factor</th><th class="num">Por {{ insumo.unidad_base }}</th><th></th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Proveedor</th><th class="ta-r">Precio normalizado</th><th class="ta-r">÷ factor</th><th class="ta-r">Por {{ insumo.unidad_base }}</th><th></th></tr></thead>
     <tbody>
       {% for o in exp.observaciones[:40] %}
       <tr>
         <td>{{ o.fecha.strftime('%d/%m/%Y') }}</td>
-        <td class="muted small">{{ o.proveedor[:26] }}</td>
-        <td class="num">{{ o.precio_normalizado | money }}</td>
-        <td class="num muted">{{ o.factor | cantidad }}</td>
-        <td class="num">{{ o.precio_por_unidad_base | money }}</td>
-        <td>{% if not o.en_ventana %}<span class="muted small">fuera de la ventana</span>{% endif %}</td>
+        <td class="c-muted small">{{ o.proveedor[:26] }}</td>
+        <td class="ta-r">{{ o.precio_normalizado | money }}</td>
+        <td class="ta-r c-muted">{{ o.factor | cantidad }}</td>
+        <td class="ta-r">{{ o.precio_por_unidad_base | money }}</td>
+        <td>{% if not o.en_ventana %}<span class="c-muted small">fuera de la ventana</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% if exp.observaciones | length > 40 %}
-  <p class="muted small">Se muestran las 40 más recientes de {{ exp.observaciones | length }}.</p>
-  {% endif %}
+      {% if exp.observaciones | length > 40 %}
+      <p>Se muestran las 40 más recientes de {{ exp.observaciones | length }}.</p>
+      {% endif %}
+    </div>
+  </details>
   {% endif %}
 </div>
 
 {% if not fuentes %}
 <div class="card">
-  <h2 class="card__title">Fuentes</h2>
+  <div class="bloque__h">
+    <span class="bloque__ico">{{ icon('link') }}</span>
+    <h2 class="card__h">Fuentes</h2>
+  </div>
   <p class="empty">Este insumo todavía no tiene ningún producto asociado.</p>
   <p class="empty__hint">
     Sin fuentes no hay precio, y sin precio este insumo no puede costear
@@ -163,12 +215,15 @@
 
 {% if insumo.notas %}
 <div class="card">
-  <h2 class="card__title">Notas</h2>
+  <div class="bloque__h">
+    <span class="bloque__ico">{{ icon('note') }}</span>
+    <h2 class="card__h">Notas</h2>
+  </div>
   <p>{{ insumo.notas }}</p>
 </div>
 {% endif %}
 
-<p class="muted small">
+<p class="c-muted small">
   {% if usos %}Usado en {{ usos }} línea(s) de receta.
   {% else %}Todavía no lo usa ninguna receta.{% endif %}
 </p>

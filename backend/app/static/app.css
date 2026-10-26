@@ -1,237 +1,1947 @@
-/* Palette ported from restaurant-manager's app.css so the two apps read as
-   one system. Two alert palettes, and which one you want depends on what
-   the thing is: amber is a QUEUE (something waits for the operator and
-   clears when they act -- the mapping queue, an incompleto receta); red is
-   a NUMBER THAT IS BAD (a cost that jumped). `--trend-up` is red because up
-   is the bad way for a cost to move. Do not introduce new hex values
-   inline. */
-:root {
-  --paper: #f4f6f5;
-  --surface: #ffffff;
-  --ink: #1c2426;
-  --ink-soft: #5d6b6e;
-  --line: #e2e8e7;
-  --teal: #0f766e;
-  --teal-soft: #e6f2f1;
-  --amber: #b45309;
-  --amber-soft: #fdf3e3;
-  --alert: #b42318;
-  --alert-soft: #fdeceb;
-  --trend-up: var(--alert);
-  --trend-down: var(--teal);
+/* ══════════════════════════════════════════════════════════════════════
+   menu-builder — app.css
+
+   The first ~982 lines of this file are restaurant-manager's app.css,
+   copied VERBATIM at:
+
+       repo   restaurant-manager
+       commit d4d81f06ae16b8e2eb398842dcc5b0461918fc51  (2026-09-02)
+       path   backend/app/static/app.css
+
+   That is DESIGN.md D33: the shell is upstream's, so the two apps read as
+   one product and a fix to a button is one edit that pastes into either
+   repo. It is copied rather than shared because the suite ships as two
+   installs (D24) and the scope decision was menu-builder-only.
+
+   Two files that start identical and are maintained apart will drift.
+   What makes that survivable is the sha above: the next port is
+
+       git -C ../restaurant-manager diff d4d81f0..HEAD -- backend/app/static/app.css
+
+   rather than an archaeology exercise. RE-STAMP IT whenever you port.
+
+   Do not edit the upstream half. This app's own rules live below the
+   "menu-builder's own layer" banner at the end of the file.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── tokens ────────────────────────────────────────────────────────────── */
+:root{
+  --ink:#14181a;          /* primary text                    */
+  --ink-2:#495259;        /* secondary text                  */
+  --muted:#79838a;        /* tertiary / placeholders         */
+  --paper:#f4f6f5;        /* app background                  */
+  --surface:#ffffff;
+  --line:#e0e4e2;         /* hairlines                       */
+  --line-2:#eef1ef;
+
+  --teal:#0d5c4d;         /* primary action, ledger green    */
+  --teal-ink:#0a4a3e;
+  --teal-soft:#e5efec;
+
+  --amber:#8a5510;        /* credit terms                    */
+  --amber-soft:#fbf1dd;
+  --alert:#9c2c22;
+  --alert-soft:#fbe9e7;
+
+  --r:7px;
+  --rail-w:212px;
+
+  /* Chart tokens. CLAUDE.md: "Colors come from the CSS custom properties
+     in app.css. Do not introduce new hex values inline" -- which the
+     charts were the one standing exception to, with --teal's value
+     respelled as a literal in four Python dicts and six <script> blocks.
+     Declared here so this file is genuinely the single source of truth.
+
+     Canvas has no cascade: Chart.js writes these to fillStyle, which does
+     not resolve var(). So the server emits token *names* ("--chart-ok")
+     and static/charts.js's readToken() resolves them against the live
+     stylesheet once per page. That indirection is the price of having one
+     place to change a color.
+
+     The status ladder (--chart-ok/warn/bad) is deliberately the same
+     teal/amber/alert triple the .pip badges use: "0-7 días vencido"
+     through "90+" is exactly a good -> warning -> critical progression,
+     not a categorical set, so it must not get a palette of its own.
+
+     --chart-cat-1..12 is the categorical palette, anchored on this app's
+     own teal hue rather than a generic stock-dashboard ramp, and arrived
+     at by a real search over hue orderings rather than by eye: worst
+     adjacent CVD deltaE 11.1 (target 8), worst normal-vision deltaE 17.4
+     (floor 15), all six clearing 3:1 against --surface. Re-run that
+     search if an 11th slot is ever needed -- don't just append a hex.
+
+     1..6 are the original set. 7..10 were added 2026-08-23, when the
+     dashboard pie started carrying servicios and gastos fijos alongside
+     producto categories and the operator asked for every category to be
+     visible rather than rolled into a "Resto" slice. That re-run is
+     scripted, not eyeballed: CIEDE2000 over normal vision plus
+     Vienot-Brettel-Mollon simulated protanopia/deuteranopia/tritanopia,
+     the original six held fixed (they are live in three charts; recoloring
+     them would be change for its own sake), candidates constrained to the
+     family's own L 36-66 / C 22-60 band and to 3:1 on --surface, and kept
+     clear of the non-categorical chart tokens above so a category can
+     never be confused with "Servicios" or with the empty grey.
+
+     Measured on the ten: worst adjacent CVD deltaE 3.5 and worst
+     normal-vision deltaE 17.9. Both numbers are set by pairs *among the
+     original six*, which were held fixed -- among pairs involving a new
+     color the figures are 27.1 adjacent-CVD and 17.9 normal. So extending
+     the palette did not degrade CVD adjacency at all, and cost 0.9 deltaE
+     of normal-vision separation. Note the 3.5 is measured all-pairs across
+     four vision models, which is a stricter reading than the 11.1 recorded
+     for the original six; the two numbers are not directly comparable.
+
+     11..12 were added 2026-08-28, when the category-hierarchy feature took
+     the producto side from 7 top-level categories to 9 -- the pie's 8
+     non-reserved slots (2 more are permanently reserved for the Servicios/
+     Gastos fijos aggregates, see routers/dashboard.py's _AGGREGATE_COLORS)
+     stopped being enough. Re-run against the held-fixed ten exactly as
+     the 6->10 extension was: candidates in the same L 36-66/C 22-60 band,
+     3:1 on --surface, maximizing the worst-case deltaE across normal
+     vision and simulated protanopia/deuteranopia/tritanopia. One
+     disclosed deviation from the 6->10 search: CIE76 (plain Euclidean Lab
+     distance) was used instead of full CIEDE2000 -- simpler to implement
+     correctly with no reference library to check against, and a reasonable
+     approximation at the gaps this search targets (8 CVD / 15 normal,
+     both far from where the two formulas diverge most). Measured on the
+     finished twelve: worst-case CVD deltaE 7.2, worst-case normal-vision
+     deltaE 22.9 -- both comfortably clear of the floors, and the CVD
+     figure alone is better than the 6->10 extension's own 3.5. */
+  --chart-ink:#0d5c4d;        /* single-series magnitude -- the default bar  */
+  --chart-compare:#c3c2b7;    /* the "período anterior" bar, deliberately mute */
+  --chart-grid:#eef1ef;       /* value-axis gridlines                        */
+  --chart-axis:#c3c2b7;       /* category-axis rule                          */
+  --chart-empty:#79838a;      /* a bucket with no assigned color             */
+
+  --chart-ok:#0d5c4d;
+  --chart-warn:#8a5510;
+  --chart-bad:#9c2c22;
+
+  --chart-soon-1:#0d5c4d;     /* due soon: a calm ramp, not the status ladder */
+  --chart-soon-2:#4a87c4;     /* -- "vence en 16-30 días" is not a problem    */
+  --chart-soon-3:#a7c4dd;
+
+  --chart-cat-1:#089980;
+  --chart-cat-2:#aa7827;
+  --chart-cat-3:#a16cad;
+  --chart-cat-4:#6c9044;
+  --chart-cat-5:#4a87c4;
+  --chart-cat-6:#be6660;
+  --chart-cat-7:#584d9a;
+  --chart-cat-8:#636337;
+  --chart-cat-9:#00636e;
+  --chart-cat-10:#8f420b;
+  --chart-cat-11:#8486f0;
+  --chart-cat-12:#774847;
+
+  /* The Gasto chart's three stacked segments -- Compras / Servicios /
+     Gastos fijos (2026-08-23). Semantic names rather than reusing
+     --chart-cat-N directly: those are assigned by *rank* in the pie, and a
+     stack segment whose color moved with its share would be unreadable.
+     The values are the existing anchored palette's own (ink, cat-5,
+     cat-2), so no new hue enters the design -- only a new meaning. */
+  --chart-src-compras:#0d5c4d;
+  --chart-src-servicios:#4a87c4;
+  --chart-src-fijos:#aa7827;
+  /* The same three under the YoY comparison bar, each mixed 55% toward
+     --surface. Same hue = same source; lighter = the earlier period,
+     which is the convention --chart-compare already established for the
+     single-series version of this chart. Tints of existing colors, not
+     new hues -- and deliberately low-contrast, since the comparison bar
+     is a reference the current bar is read against, not a figure in its
+     own right. */
+  --chart-src-compras-prev:#92b6af;
+  --chart-src-servicios-prev:#aec9e4;
+  --chart-src-fijos-prev:#d9c29e;
+
+  --ui: ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
 }
 
-* { box-sizing: border-box; }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--ui);
+  font-size:14px;
+  line-height:1.45;
+  color:var(--ink);
+  background:var(--paper);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
 
-body {
-  margin: 0;
-  display: flex;
-  min-height: 100vh;
-  background: var(--paper);
-  color: var(--ink);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+.ta-r{text-align:right}
+.ta-c{text-align:center}
+.c-muted{color:var(--muted)}
+
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
+
+/* ── rail ──────────────────────────────────────────────────────────────── */
+/* Light since 2026-08-23, on --surface -- the same white the cards use, by
+   request. It was --ink (near-black) with a set of one-off greys tuned for
+   that dark ground (#c9d2d0 text, #20272a hover, #262d30 hairlines, #7d8a88
+   muted, #6c7a78 for "Pronto"); every one of those is now a token that
+   already exists, so the rail finally draws from the same palette as the
+   rest of the app instead of carrying a private one.
+
+   Two things the inversion needs that the dark version did not: a
+   border-right, because a white rail against the --paper stage would
+   otherwise have no edge at all, and .rail__link:hover on --paper rather
+   than on a darker grey -- the same "hover is the app background" move
+   .msel__opt and .datepicker__day already make.
+
+   Contrast on white, measured: --ink 17.9:1 (brand), --ink-2 8.0:1 (nav
+   links), --muted 3.9:1 (the company subtitle and the "Pronto" tag, both
+   incidental labels, not controls). The active link keeps solid --teal
+   with white text, which is unchanged and was already the one part of the
+   rail that did not depend on a dark ground. */
+.rail{
+  position:fixed;inset:0 auto 0 0;width:var(--rail-w);
+  background:var(--surface);color:var(--ink-2);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:20px 0;
+}
+.rail__brand{padding:0 20px 22px;border-bottom:1px solid var(--line);margin-bottom:14px;text-align:center}
+/* Was always exactly "CxP", which is what the wide .14em letter-spacing
+   was tuned for -- a short logotype-style abbreviation. It's a fallback
+   for the operator's own commercial name now too (2026-08-24, when no
+   logo file is configured), which can run to two or three words -- wide
+   tracking on a real business name reads as stretched, not branded, so
+   this is toned down to suit either. Centered (.rail__brand's own
+   text-align), matching the logo it stands in for. */
+.rail__mark{
+  display:block;font-family:var(--mono);font-size:15px;font-weight:600;
+  letter-spacing:.02em;line-height:1.3;color:var(--ink);
+}
+/* The operator's own file (2026-08-24), 2849x1302 -- a wide mark, spanning
+   the rail's own content box (width, not height-capped -- a small margin
+   either side, `margin:0 auto` to center it under .rail__brand's own
+   text-align:center) rather than sitting small in a corner. */
+.rail__logo{display:block;width:calc(100% - 12px);height:auto;margin:0 auto}
+.rail__nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+.rail__link{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:9px 12px;border-radius:var(--r);
+  color:var(--ink-2);font-size:14px;
+}
+.rail__link:hover{background:var(--paper);text-decoration:none;color:var(--ink)}
+/* Active section: --teal lettering (and icon, via stroke:currentColor) on
+   the --teal-soft ground, rather than the inverse -- solid --teal with
+   white text -- it was while the rail itself was near-black. Against a
+   white rail that solid block was the heaviest thing on the page and read
+   as a button rather than as "you are here". 6.7:1 on its own ground, and
+   the tint carries the state on its own, so weight is the only other cue
+   needed. */
+.rail__link.is-on{background:var(--teal-soft);color:var(--teal);font-weight:500}
+/* ...and it has to win over :hover, which is declared above it and would
+   otherwise repaint the active item --paper on the way past. */
+.rail__link.is-on:hover{background:var(--teal-soft);color:var(--teal)}
+.rail__soon{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+/* Icon + label, wrapped together so .rail__link's own justify-content:
+   space-between (there for .rail__group's ›  chevron, ::after) still only
+   ever sees one real flex item on a plain link -- two bare items (icon,
+   text) would get pushed to opposite ends instead of sitting together. */
+.rail__link-inner{display:flex;align-items:center;gap:10px;min-width:0}
+.rail__icon{width:16px;height:16px;flex:0 0 auto;stroke:currentColor}
+/* "Reportes" -- a <details>/<summary> disclosure, not a bespoke JS toggle:
+   works with zero JS (same progressive-enhancement stance as the rest of
+   this file), and <summary class="rail__link"> renders identically to
+   every other nav item except for the chevron this adds back. */
+.rail__group{display:flex;flex-direction:column}
+.rail__group>summary.rail__link{list-style:none;cursor:pointer}
+.rail__group>summary.rail__link::-webkit-details-marker{display:none}
+.rail__group>summary.rail__link::after{
+  content:"›";color:var(--muted);font-size:15px;transition:transform .15s;
+}
+.rail__group[open]>summary.rail__link::after{transform:rotate(90deg)}
+.rail__link--sub{padding-left:22px}
+.rail__foot{margin-top:auto;padding:14px 10px 0;border-top:1px solid var(--line)}
+
+/* ── stage ─────────────────────────────────────────────────────────────── */
+.stage{margin-left:var(--rail-w);padding:30px 34px 80px;max-width:1400px}
+
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}
+.head__title{margin:0;font-size:25px;font-weight:600;letter-spacing:-.02em}
+.head__sub{margin:3px 0 0;color:var(--muted);font-size:13px}
+.head__acts{display:flex;gap:9px}
+
+/* ── controls ──────────────────────────────────────────────────────────── */
+.btn{
+  font:inherit;font-size:13.5px;font-weight:500;
+  padding:8px 15px;border-radius:var(--r);border:1px solid transparent;
+  cursor:pointer;white-space:nowrap;
+}
+.btn--solid{background:var(--teal);color:#fff}
+.btn--solid:hover{background:var(--teal-ink)}
+.btn--ghost{background:var(--surface);border-color:var(--line);color:var(--ink)}
+.btn--ghost:hover{border-color:var(--muted);text-decoration:none}
+.btn:disabled{opacity:.45;cursor:default;pointer-events:none}
+/* Pagination, ported verbatim from restaurant-manager: Google-results style,
+   prev/next words either side of a page-number strip that collapses distant
+   pages to an ellipsis. Buttons and links here are plain .btn/.btn--ghost/
+   .btn--solid, the same components as everywhere else -- this block is
+   layout only, which is what keeps the two apps looking like one. */
+.pagenav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:12px}
+.pagenav .btn{padding:6px 12px}
+.pagenav__ellipsis{color:var(--muted);font-size:12.5px;padding:0 3px}
+/* Icon-only square variant (e.g. the Categorías de servicio modal's own
+   Eliminar) -- .btn--danger is its color, .btn--icon its shape; combine
+   both rather than one fixed "delete button" class, in case an icon-only
+   button that isn't destructive shows up later. */
+.btn--icon{padding:7px;line-height:0}
+.btn--icon svg{display:block;width:16px;height:16px}
+.btn--danger{background:var(--surface);border-color:var(--line);color:var(--alert)}
+.btn--danger:hover{background:var(--alert-soft);border-color:var(--alert)}
+
+.filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filters__q{flex:1 1 300px;min-width:200px}
+input,select,textarea{
+  font:inherit;font-size:13.5px;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;
+  width:100%;
+}
+input:hover,select:hover{border-color:#c8cfcc}
+input:focus,select:focus,textarea:focus{border-color:var(--teal);outline:none;box-shadow:0 0 0 3px var(--teal-soft)}
+/* The clear × on every `input[type=search]` -- the palette's search box,
+   the insumo and receta filters, the buscador, and the mapping queue's
+   own bar. Left alone it is the BROWSER's control and wears the
+   browser's accent: a saturated blue × in an app with no blue in it,
+   the one piece of chrome on screen that came from somewhere else.
+
+   Drawn as a mask rather than as a background image, because a mask
+   takes its colour from `background-color` -- so this is `--muted` like
+   every other tertiary mark, and darkens on hover, instead of a second
+   × baked into a data URI at a fixed colour. The geometry is
+   `_icons.html`'s own `x` (24 viewBox, round-capped 2px strokes), so
+   the app has one × and not two.
+
+   WebKit and Chromium only; Firefox renders no clear button at all for
+   `type=search`, which is why this is a polish rule and never the only
+   way to empty a field. */
+input[type=search]::-webkit-search-cancel-button{
+  -webkit-appearance:none;appearance:none;
+  width:13px;height:13px;margin-left:6px;cursor:pointer;
+  background-color:var(--muted);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='18' y1='6' x2='6' y2='18'/%3E%3Cline x1='6' y1='6' x2='18' y2='18'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+input[type=search]::-webkit-search-cancel-button:hover{background-color:var(--ink-2)}
+.filters select{width:auto;min-width:150px}
+/* Narrower variant for a filter row that has to share the card__head line
+   with a kpi-row (Gasto's Total del período/Promedio cards) -- the default
+   150px min-width per select is sized for a filter row with room to
+   itself; four of them there push the kpi-row onto its own line instead of
+   sitting at the upper-right corner alongside it. */
+.filters--compact{gap:6px}
+/* padding-top/-bottom/-left only, never the `padding` shorthand -- this
+   selector (.filters--compact select) is more specific than the base
+   `select` rule below that reserves padding-right:30px for the custom
+   arrow, so a shorthand here would zero that reservation out and let text
+   render under the arrow instead of stopping short of it. */
+.filters--compact select{min-width:108px;font-size:12.5px;padding-top:6px;padding-bottom:6px;padding-left:8px}
+/* Every <select>'s own native arrow, replaced with the same small triangle
+   as .msel__caret's "&#9662;" (--muted, ~11px) -- one consistent dropdown
+   affordance app-wide instead of each browser's own default chrome. */
+select{
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6'%3E%3Cpath d='M0 0L4.5 6L9 0Z' fill='%2379838a'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;
+  padding-right:30px;
 }
 
-.rail {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 220px;
-  padding: 20px 12px;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
+/* ── grid ──────────────────────────────────────────────────────────────── */
+.grid{
+  width:100%;border-collapse:collapse;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;
 }
-.rail__brand { font-weight: 600; padding: 0 12px 20px; }
-.rail__link {
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: var(--ink-soft);
-  text-decoration: none;
+.grid th{
+  text-align:left;font-size:11px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);
+  padding:10px 14px;border-bottom:1px solid var(--line);background:#fafbfa;
 }
-.rail__link:hover { background: var(--paper); }
-.rail__link--sub { margin-left: 12px; font-size: 13px; }
-.rail__foot { margin-top: auto; }
-.rail__link.is-on { color: var(--teal); background: var(--teal-soft); }
-.rail__link.is-on:hover { color: var(--teal); background: var(--teal-soft); }
+.grid th.ta-r{text-align:right}
+.grid th.ta-c{text-align:center}
+.grid th.nowrap,.grid td.nowrap{white-space:nowrap}
+/* table-layout:fixed kept fighting itself across three attempts (2026-08-20):
+   .truncate's old max-width:0 overrode a sibling column's own explicit
+   width; removing it then collided with .grid__name's display:block (set
+   directly on a <td>, not a nested span) -- a block box inside a
+   fixed-layout cell breaks that cell out of the column's assigned width
+   for text-overflow's own overflow measurement, so the name rendered as
+   2-3 characters even though the column itself was sized correctly.
+   table-layout:auto (this table's actual default) already works, proven
+   by "Gasto por proveedor" showing full names correctly with the exact
+   same .grid__name-on-<td> markup -- so instead of fighting fixed layout
+   a fourth time, .truncate just caps width directly (the standard
+   ellipsis-cell pattern under auto layout) and every table that needs
+   truncation goes back to plain .grid, no .grid--fixed. */
+.grid td.truncate{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid td{padding:11px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
+.grid tbody tr:last-child td{border-bottom:0}
+.grid tbody tr{cursor:pointer}
+/* Every .grid row has always had an onclick before this -- the dashboard's
+   Servicios card is the first exception (2026-08-24): a service category
+   with more than one supplier in the window has nowhere single to send a
+   click, so its row carries no onclick at all. Without this override it
+   still shows a pointer, promising a click that does nothing. */
+.grid tbody tr:not([onclick]){cursor:default}
+.grid tbody tr:hover{background:#fafcfb}
+.grid tbody tr:not([onclick]):hover{background:none}
+.grid__name{display:block;font-weight:500}
+/* Same weight as .grid__name, but no display:block -- the property that
+   broke .truncate's ellipsis measurement (see the comment above). Use this
+   on any identity column (Proveedor/Producto) that also needs to truncate;
+   .grid__name stays for identity columns that never truncate. */
+.grid__name-t{font-weight:500}
+/* An asterisk beside a date whose provenance needs a word -- see
+   Comprobante.fecha_nota. Deliberately small and muted: it marks an
+   exception, and on every other invoice in the app there is nothing to
+   mark. cursor:help matches .kpi__alert's own hover-for-detail idiom.
+   The explanation itself rides in `data-tooltip` rather than `title` --
+   a native browser tooltip can't take app styling at all, so it rendered
+   as a plain OS box off-palette from everything else on the page. The
+   bubble below is `.msel__panel`'s own shape (surface/line/box-shadow,
+   no arrow -- that popover doesn't draw one either) repurposed for a
+   one-line note instead of a dropdown list. */
+.date-note{position:relative;color:var(--amber);font-weight:600;cursor:help;margin-left:2px}
+.date-note::after{
+  content:attr(data-tooltip);
+  /* Anchored to the marker's own left edge, not centered -- this sits in
+     a table's first (date) column more often than not, close enough to
+     the card's own left edge that a centered bubble routinely pushed its
+     left half past it and clipped the opening words of the note. Growing
+     rightward from the asterisk never runs past that edge. */
+  position:absolute;left:0;bottom:calc(100% + 6px);
+  background:var(--surface);border:1px solid var(--line);border-radius:6px;
+  box-shadow:0 10px 28px rgba(10,20,18,.14);
+  font-family:var(--ui);font-size:12px;font-weight:400;line-height:1.4;color:var(--ink);
+  white-space:normal;width:max-content;max-width:240px;padding:7px 10px;text-align:left;
+  opacity:0;visibility:hidden;transition:opacity .12s ease;pointer-events:none;z-index:30;
+}
+.date-note:hover::after,.date-note:focus-visible::after{opacity:1;visibility:visible}
+.grid__legal{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+/* Same tone as .grid__legal, but inline -- for a note that must stay on
+   the same line as the value it annotates (e.g. the price macro's "(USD
+   2.95)"), not wrap to a second line like .grid__legal's CABYS/subtitle use. */
+.grid__inline-note{font-size:11.5px;color:var(--muted);margin-left:5px;white-space:nowrap}
+/* Price-trend arrow (Productos list) vs. the purchase before -- red up
+   means a price increase (bad), teal/green down means a decrease (good),
+   same semantic pairing as .pip--ok (teal) / .pip--alert (red) elsewhere. */
+.trend{margin-left:5px;font-size:11px}
+.trend--up{color:var(--alert)}
+.trend--down{color:var(--teal)}
 
-.stage { flex: 1; padding: 28px 32px; }
-.stage__head h1 { margin: 0 0 20px; font-size: 22px; }
+.pip{
+  display:inline-block;font-size:11.5px;line-height:1.6;
+  padding:1px 8px;border-radius:20px;
+  background:var(--surface);color:var(--ink-2);white-space:nowrap;
+  border:1px solid var(--line);
+}
+/* Solid fills for meaningful states -- reads clearly on white cards AND on
+   the teal-soft haci__card backdrop, where a same-toned soft pip used to
+   vanish into the background. */
+.pip--ok{background:var(--teal);color:#fff;border-color:var(--teal)}
+.pip--credit{background:var(--amber);color:#fff;border-color:var(--amber)}
+.pip--warn{background:var(--amber);color:#fff;border-color:var(--amber)}
+.pip--alert{background:var(--alert);color:#fff;border-color:var(--alert)}
+.pip--faint{background:transparent;color:var(--muted);border:1px solid var(--line)}
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 20px;
+/* ── multiselect (chips + dropdown, à la Streamlit) ───────────────────────
+   Real checkboxes drive the actual <form> submission (name="category_ids"
+   repeated) -- visually hidden, never display:none (stays in the tab
+   order's DOM, keeps working as plain checkboxes if JS never runs). The
+   chips + dropdown are a display layer that (a) renders a solid chip per
+   checked box and (b) hides that box's row from the dropdown list, so the
+   list only ever shows what's *not* selected yet -- see the delegated
+   msel* handlers in base.html. */
+.msel{position:relative}
+.msel__control{
+  display:flex;align-items:center;gap:8px;min-height:38px;cursor:pointer;
+  font:inherit;font-size:13.5px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);padding:6px 11px;
+}
+.msel__control:hover{border-color:#c8cfcc}
+.msel.is-open .msel__control{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-soft)}
+/* The search-combobox variant's real <input> would otherwise also pick up
+   the generic input{border,padding,background} rule below -- a box nested
+   inside .msel__control's own box, taller than every other control on the
+   page (button, plain <select>). .msel__control alone provides the visual
+   box; the input just needs to sit flush and fill it. */
+.msel__control input[type=text]{border:0;background:none;padding:0;width:auto;flex:1;min-width:0}
+.msel__control input[type=text]:focus{outline:none;box-shadow:none}
+.msel__chips{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+.msel__placeholder{color:var(--muted)}
+.msel__chip{
+  display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:1.6;
+  padding:2px 6px 2px 10px;border-radius:20px;background:var(--teal);color:#fff;
+}
+.msel__chipx{
+  border:0;background:none;padding:0 2px;font-size:13px;line-height:1;
+  color:#fff;opacity:.75;cursor:pointer;
+}
+.msel__chipx:hover{opacity:1}
+.msel__caret{color:var(--muted);font-size:11px;flex-shrink:0}
+.msel__panel{
+  position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:0 10px 28px rgba(10,20,18,.14);padding:6px;
+  max-height:220px;overflow-y:auto;
+}
+/* `display:flex` rather than upstream's `block`: a row here carries a
+   count on its right, which needs a main axis to be pushed along. The
+   `[hidden]` rule below still matters for exactly the same reason -- any
+   author `display` beats the browser default. */
+.msel__opt{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 10px;border-radius:5px;font-size:13.5px;cursor:pointer;
+}
+/* .msel__opt's own `display:block` above otherwise beats the browser's
+   default [hidden]{display:none} rule (same specificity, author CSS wins
+   the cascade) -- without this, JS setting the hidden attribute on an
+   already-selected row (mselRenderChips in base.html) had no visual
+   effect, so picked items never actually disappeared from the dropdown. */
+.msel__opt[hidden]{display:none}
+.msel__opt:hover{background:var(--paper)}
+/* A subcategory row under its own parent's checkbox (2026-08-28, the
+   Categorías permitidas multiselect) -- indentation only, same visual move
+   .rail__link--sub already makes for the nav's own parent/child rows. */
+.msel__opt--sub{padding-left:28px}
+.msel__opt input{position:absolute;width:0;height:0;opacity:0;pointer-events:none}
+/* How much is still pending in that category -- the number that says where
+   an afternoon goes, and the reason this picker is worth having at all. The
+   chip reads `[data-msel-label]` so the count does not ride into it. */
+.msel__n{
+  margin-left:auto;flex:0 0 auto;
+  font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+}
+.msel__empty{margin:0;padding:9px 10px;font-size:13px;color:var(--muted)}
+
+/* Custom calendar picker (Histórico's "Personalizado" start/end) -- reuses
+   .msel/.msel__control/.msel__panel/.msel__caret for the open/close shell
+   (same generic handlers in base.html already give it click-to-open and
+   click-outside-to-close for free), with its own .datepicker__* classes
+   for the calendar grid inside the panel. Native <input type=date>'s own
+   popup calendar is OS-rendered and can't be styled at all -- same
+   reasoning as the search-combobox replacing <input list><datalist>. */
+.datepicker{width:150px}
+.datepicker .msel__control{cursor:pointer}
+.datepicker__text{flex:1;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.datepicker__text--placeholder{color:var(--muted)}
+.datepicker .msel__panel{width:264px;right:auto;padding:10px}
+.datepicker__nav{display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px}
+.datepicker__navbtn{
+  border:0;background:none;color:var(--ink-2);font-size:15px;line-height:1;
+  cursor:pointer;padding:5px 9px;border-radius:5px;
+}
+.datepicker__navbtn:hover{background:var(--paper)}
+.datepicker__month{font-size:13px;font-weight:600;text-transform:capitalize}
+.datepicker__weekdays{
+  display:grid;grid-template-columns:repeat(7,1fr);gap:2px;
+  font-size:11px;color:var(--muted);text-align:center;margin-bottom:2px;
+}
+.datepicker__days{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.datepicker__day{
+  border:0;background:none;padding:7px 0;border-radius:5px;font-size:13px;
+  cursor:pointer;color:var(--ink);
+}
+.datepicker__day:hover:not(:disabled){background:var(--paper)}
+.datepicker__day--muted{color:var(--line)}
+.datepicker__day:disabled{cursor:default}
+.datepicker__day.is-selected{background:var(--teal);color:#fff}
+
+.void{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:52px 20px;text-align:center;
+}
+.void__t{margin:0;font-weight:500}
+.void__s{margin:5px 0 18px;color:var(--muted);font-size:13px}
+
+/* ── sheet (modal) ─────────────────────────────────────────────────────── */
+.sheet{
+  border:none;border-radius:12px;padding:0;width:min(540px,calc(100vw - 32px));
+  box-shadow:0 18px 50px rgba(10,20,18,.24);color:var(--ink);
+}
+/* Wide enough for a reconstructed invoice's own table (cantidad/precio/total
+   columns) to fit without horizontal scrolling -- the "última factura"
+   preview on /proveedores/no-registrados, 2026-08-25.
+   Also the two modals that render a .detail-list of found invoices
+   (2026-09-02): the Gmail-sync modal and "Creando proveedor". A row there is
+   a consecutivo plus a full razón social plus a money amount, which at the
+   default 540px wrapped onto three lines per payable and read as several
+   entries rather than one. */
+.sheet--wide{width:min(760px,calc(100vw - 32px))}
+.sheet::backdrop{background:rgba(16,24,22,.42)}
+.sheet__head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 22px 14px;border-bottom:1px solid var(--line);
+}
+.sheet__title{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.sheet__x{
+  border:0;background:none;font-size:24px;line-height:1;color:var(--muted);
+  cursor:pointer;padding:0 3px;
+}
+.sheet__x:hover{color:var(--ink)}
+.sheet__body{padding:18px 22px;max-height:min(68vh,620px);overflow-y:auto}
+.sheet__foot{
+  display:flex;justify-content:flex-end;gap:9px;
+  padding:14px 22px;border-top:1px solid var(--line);background:#fafbfa;
+  border-radius:0 0 12px 12px;
 }
 
-.pip {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 12px;
+.field{margin-bottom:15px}
+.field label{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2);margin-bottom:5px}
+/* .field label above (0,1,1) otherwise beats .check's own display:flex
+   (0,1,0) whenever a checkbox label sits inside a .field wrapper (es_servicios,
+   usa_unidad_comercial, activo, track_inventario, is_petty_cash) -- collapses
+   the label to block and, since .check__box is a bare <span> (inline by
+   default), its explicit width/height are silently ignored too, so the
+   generated box never shows at all, just its border sliver. Found live,
+   2026-08-21: a screenshot showed the "Es un proveedor de servicios"
+   checkbox with no visible box whatsoever. Higher-specificity override
+   restores .check's own intended look regardless of ancestor. */
+.field label.check{display:flex;font-size:13.5px;font-weight:400;color:var(--ink);margin-bottom:0}
+.field__hint{margin:5px 0 0;font-size:11.5px;color:var(--muted);line-height:1.4}
+.field__err{margin:5px 0 0;font-size:11.5px;color:var(--alert)}
+.field.is-bad input,.field.is-bad select{border-color:var(--alert)}
+.field.is-bad input:focus{box-shadow:0 0 0 3px var(--alert-soft)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row>.field{min-width:0} /* otherwise a wide <select> can push its 1fr track past an even split */
+/* Tipo de identificación / Cédula / Nombre triple (Gastos fijos' "¿Quién
+   cobra?" block) -- 1/4 + 1/4 + 1/2, unlike .row's even split. */
+.row--id{display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px}
+.row--id>.field{min-width:0}
+
+/* ── signature: the resolving identification field ─────────────────────── */
+.haci{margin:-4px 0 15px;min-height:0}
+.haci.htmx-request{min-height:56px;position:relative}
+.haci.htmx-request::after{
+  content:"Consultando Hacienda…";
+  position:absolute;inset:0;display:flex;align-items:center;
+  padding:0 14px;font-size:12.5px;color:var(--muted);
+  background:linear-gradient(100deg,var(--line-2) 20%,#f7faf9 40%,var(--line-2) 60%);
+  background-size:220% 100%;animation:sweep 1.15s linear infinite;
+  border-radius:var(--r);
 }
-.pip--warn { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); }
-.pip--alert { color: var(--alert); background: var(--alert-soft); border: 1px solid var(--alert); }
+@keyframes sweep{to{background-position:-220% 0}}
 
-.empty { color: var(--ink-soft); margin: 0; }
-.empty__hint { color: var(--ink-soft); font-size: 13px; margin: 8px 0 0; }
-
-/* --- Ajustes / sync panel ------------------------------------------- */
-.card__title { margin: 0 0 6px; font-size: 15px; }
-.card + .card { margin-top: 16px; }
-.muted { color: var(--ink-soft); }
-.small { font-size: 12px; }
-
-.kpis { display: flex; gap: 12px; margin: 16px 0 12px; flex-wrap: wrap; }
-.kpi {
-  flex: 1 1 140px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
+/* No boxed background/border here anymore (2026-09-02, operator's own
+   request to drop the "green box" -- this sat at --teal-soft/#cfe0db
+   before). A status message reads fine as plain text on whatever surface
+   it's already inside (a .sheet__body, a .card); a colored ground added
+   nothing an alert doesn't already need, and .haci__card--warn below still
+   gets one, since amber IS the meaning there (see CLAUDE.md's "Two alert
+   palettes" -- amber is a queue waiting on the operator, not decoration). */
+.haci__card{animation:settle .22s ease-out}
+/* Every alert surface in the app uses the same pair: --amber-soft ground,
+   full-strength --amber border. Keep .alertbox, .kpi--alert and this in
+   step. Declares its own box (background/border/radius/padding) rather
+   than inheriting it from .haci__card, which no longer has one. */
+.haci__card--warn{
+  background:var(--amber-soft);border:1px solid var(--amber);
+  border-radius:var(--r);padding:11px 14px;
 }
-.kpi__label { color: var(--ink-soft); font-size: 12px; }
-.kpi__value { font-size: 22px; margin-top: 2px; }
-.kpi__value--sm { font-size: 15px; }
-
-.actions { display: flex; gap: 8px; margin: 4px 0 8px; }
-.btn {
-  padding: 7px 14px;
-  border: 1px solid var(--teal);
-  border-radius: 8px;
-  background: var(--teal);
-  color: #fff;
-  font: inherit;
-  cursor: pointer;
+@keyframes settle{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.async-panel.htmx-request{min-height:56px;position:relative}
+.async-panel.htmx-request::after{
+  content:"Buscando en Gmail… puede tardar unos segundos";
+  position:absolute;inset:0;display:flex;align-items:center;
+  padding:0 14px;font-size:12.5px;color:var(--muted);
+  background:linear-gradient(100deg,var(--line-2) 20%,#f7faf9 40%,var(--line-2) 60%);
+  background-size:220% 100%;animation:sweep 1.15s linear infinite;
+  border-radius:var(--r);
 }
-.btn:hover { filter: brightness(1.08); }
-.btn--ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
-.btn--ghost:hover { background: var(--paper); filter: none; }
-
-.grid { width: 100%; border-collapse: collapse; margin-top: 10px; }
-.grid th, .grid td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
-.grid th { color: var(--ink-soft); font-weight: 500; font-size: 12px; }
-.grid .num { text-align: right; }
-.pip--ok { color: var(--teal); background: var(--teal-soft); border: 1px solid var(--teal); }
-
-/* --- forms, toolbar, list rows --------------------------------------- */
-.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-.toolbar__filters { display: flex; gap: 8px; align-items: center; }
-
-.input {
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
+@media (prefers-reduced-motion:reduce){
+  .haci__card{animation:none}
+  .haci.htmx-request::after{animation:none}
+  .async-panel.htmx-request::after{animation:none}
+  .spinner-dots i{animation:none;opacity:.6}
 }
-.input:focus { outline: 2px solid var(--teal-soft); border-color: var(--teal); }
-.input--sm { width: 120px; }
-.input--bad { border-color: var(--alert); background: var(--alert-soft); }
-textarea.input { width: 100%; resize: vertical; }
+.haci__row{display:flex;gap:10px;align-items:baseline}
+.haci__k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--teal-ink);opacity:.75}
+.haci__v{font-weight:500;font-size:14.5px}
+.haci__pips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.haci__warn{margin:8px 0 0;font-size:12px;color:var(--alert)}
+/* Bumped a step up from 13px/11.5px (2026-09-02, alongside dropping the
+   green box) -- with no colored ground to help this stand out anymore, the
+   type itself has to carry more of the weight. */
+.haci__msg{margin:0;font-size:15px;font-weight:500;color:var(--amber)}
+/* Same outline-icon language as .rail__icon (stroke:currentColor, no fill)
+   -- inherits .haci__msg's own amber automatically. vertical-align nudges
+   it onto the text's baseline since this sits inline in a <p>, not in a
+   flex row the way the nav icons do. */
+.alert-icon{width:14px;height:14px;vertical-align:-2px;margin-right:3px;stroke:currentColor}
+.haci__sub{margin:3px 0 0;font-size:13px;color:var(--ink-2)}
 
-.form { max-width: 620px; }
-.field { margin-bottom: 18px; }
-.field label { display: block; margin-bottom: 5px; font-weight: 500; }
-.field__hint { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; }
-.field__error { margin: 5px 0 0; color: var(--alert); font-size: 12px; }
+/* Every long background job (Gmail sync, Recategorizar catálogo, a new
+   supplier's history fetch, ...) renders the same loading shape now
+   (2026-09-02, operator's own request): a centered spinner with its
+   explanatory copy below it, no separate bold title line -- the modal's own
+   sheet__title already says what's running, so repeating it inside the card
+   was redundant. */
+.haci__card--loading{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:20px 14px}
 
-.row-link { cursor: pointer; }
-.row-link:hover { background: var(--paper); }
-
-/* --- mapping queue ---------------------------------------------------- */
-.mapeo__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-.mapeo__form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
-.mapeo__destino { padding: 7px 0; }
-.field--inline { margin-bottom: 0; }
-.field--inline label { font-size: 12px; color: var(--ink-soft); }
-.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
-.check input { margin: 0; }
-
-/* --- cost figure + explanation --------------------------------------- */
-.costo { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 4px; }
-.costo__cifra { font-size: 30px; color: var(--teal); }
-.costo__unidad { color: var(--ink-soft); }
-.sub { margin: 18px 0 0; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
-.aviso { padding: 9px 12px; border-radius: 8px; margin: 10px 0 0; font-size: 13px; }
-.aviso--warn { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); }
-
-/* --- the builder (PLAN.md §10.1) -------------------------------------- */
-/* Two columns: what you can add on the left, what the receta is on the
-   right. Collapses to one on a narrow screen -- the palette above the
-   lines, because you pick before you place. */
-.builder { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
-@media (max-width: 900px) { .builder { grid-template-columns: 1fr; } }
-.builder__paleta { padding: 14px; max-height: 78vh; overflow-y: auto; }
-
-.paleta__buscar { width: 100%; margin-bottom: 4px; }
-.paleta__pie { margin: 14px 0 0; }
-.pal {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: grab;
-  user-select: none;
+/* Indeterminate spinner for a job with no measurable progress -- 8 dots
+   orbiting the ring, each fading out on a staggered delay so the eye reads
+   one continuous sweep rather than 8 separate blinks. */
+.spinner-dots{position:relative;width:34px;height:34px;flex:none}
+.spinner-dots i{
+  position:absolute;top:50%;left:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
+  border-radius:50%;background:var(--teal);opacity:.15;
+  animation:spinner-dots-fade 1s linear infinite;
 }
-.pal:hover { background: var(--paper); border-color: var(--line); }
-.pal__nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pal.is-arrastrando { opacity: .5; }
+.spinner-dots i:nth-child(1){transform:rotate(0deg) translate(14px);animation-delay:-.875s}
+.spinner-dots i:nth-child(2){transform:rotate(45deg) translate(14px);animation-delay:-.75s}
+.spinner-dots i:nth-child(3){transform:rotate(90deg) translate(14px);animation-delay:-.625s}
+.spinner-dots i:nth-child(4){transform:rotate(135deg) translate(14px);animation-delay:-.5s}
+.spinner-dots i:nth-child(5){transform:rotate(180deg) translate(14px);animation-delay:-.375s}
+.spinner-dots i:nth-child(6){transform:rotate(225deg) translate(14px);animation-delay:-.25s}
+.spinner-dots i:nth-child(7){transform:rotate(270deg) translate(14px);animation-delay:-.125s}
+.spinner-dots i:nth-child(8){transform:rotate(315deg) translate(14px);animation-delay:0s}
+@keyframes spinner-dots-fade{0%{opacity:1}100%{opacity:.15}}
 
-.btn--xs { padding: 2px 7px; font-size: 12px; border-radius: 6px; }
-.input--xs { width: 68px; padding: 4px 6px; font-size: 13px; }
-select.input--xs { width: auto; }
-
-.lineas__asa { width: 22px; color: var(--ink-soft); cursor: grab; user-select: none; }
-.lineas__acciones { display: flex; gap: 4px; justify-content: flex-end; }
-.linea--faltante { background: var(--amber-soft); }
-.linea__cantidad { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
-.linea__desglose td { padding-top: 0; border-bottom: 1px solid var(--line); }
-.grid--anidada { margin: 6px 0 4px; }
-.grid--anidada td { border-bottom: none; padding: 3px 8px; }
-/* The drop indicator while a line is being dragged over another. */
-.linea.is-destino td { box-shadow: inset 0 2px 0 0 var(--teal); }
-.linea.is-arrastrando { opacity: .4; }
-
-.soltar {
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px dashed var(--line);
-  border-radius: 10px;
-  color: var(--ink-soft);
-  text-align: center;
-  font-size: 13px;
+/* Determinate spinner (Recategorizar catálogo, the one job that can report a
+   real percentage) -- a ring whose stroke fills clockwise from 12 o'clock,
+   the number in its own center instead of a separate linear bar.
+   `stroke-dasharray`/`-dashoffset` are set inline per render, same
+   convention the old .progress__bar's inline width used -- plain
+   server-rendered HTML re-swapped by htmx on each poll, no client JS
+   computes it. `transform:rotate(-90deg)` on the <svg> moves the arc's start
+   from 3 o'clock (SVG's own zero angle) to 12. */
+.spinner-ring{position:relative;width:56px;height:56px;flex:none}
+.spinner-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.spinner-ring circle{fill:none;stroke-width:4}
+.spinner-ring__track{stroke:var(--line-2)}
+.spinner-ring__bar{stroke:var(--teal);stroke-linecap:round;transition:stroke-dashoffset .4s ease}
+.spinner-ring__pct{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:600;color:var(--teal-ink);
 }
-.soltar.is-encima { border-color: var(--teal); background: var(--teal-soft); color: var(--teal); }
 
-.totales { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
-.totales .kpi { flex: 1 1 150px; }
-.kpi--fuerte { border-color: var(--teal); background: var(--teal-soft); }
-.kpi--fuerte .kpi__value { color: var(--teal); }
+/* The Gmail-sync modal's own "what was found" detail lists (2026-09-02,
+   replacing the old count-only summary sentences and the plain-page
+   supplier/facturas table). Each group is a heading with its own count and
+   a scrollable list -- a first full backfill can find hundreds of
+   attachments, and the modal's .sheet__body already caps at 68vh, so one
+   very long list must not push the "Cerrar" button past that. */
+.detail-group{margin-top:16px}
+.detail-group__h{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:14px;font-weight:600}
+.detail-group__count{font-size:12px;font-weight:500;color:var(--muted)}
+.detail-list{
+  list-style:none;margin:0;padding:0;max-height:170px;overflow-y:auto;
+  border:1px solid var(--line);border-radius:var(--r);
+}
+.detail-list li{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--line-2)}
+.detail-list li:last-child{border-bottom:none}
+.detail-list__row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+/* The trailing figure (a money amount, or a price alert's own pip) keeps its
+   own line no matter how long the description beside it gets -- flex would
+   otherwise shrink it and break "₡51 428.00" across two lines, which reads
+   as two numbers. The description is the side that wraps. */
+.detail-list__row>:last-child{flex:none;white-space:nowrap}
+.detail-empty{margin:0;font-size:13px;color:var(--muted)}
 
-.aviso--alert { color: var(--alert); background: var(--alert-soft); border: 1px solid var(--alert); }
-.radios { display: flex; flex-direction: column; gap: 6px; }
+/* ── detail ────────────────────────────────────────────────────────────── */
+.card{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:20px 22px;margin-bottom:16px;
+}
+.card__h{margin:0 0 3px;font-size:14px;font-weight:600}
+.card__s{margin:0 0 16px;font-size:12px;color:var(--muted)}
+/* max-width:640px (dropped) was capping the chart well short of its card;
+   height:auto derives the box height from the viewBox's own 640:220 ratio,
+   so it always exactly fills the computed width with no letterboxing or
+   distortion (unlike forcing a fixed height, which would need
+   preserveAspectRatio="none" and stretch the circles/text along with it). */
+.price-chart{width:100%;height:auto;display:block;margin-bottom:16px}
+.price-chart__line{fill:none;stroke:var(--teal);stroke-width:2}
+.price-chart__pt{fill:var(--teal)}
+.price-chart__label{font-size:10px;fill:var(--muted)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+/* A caption sitting directly on its own divider line -- the line fills the
+   remaining row width after the text, rather than a separate <p> + <hr>
+   with a paragraph's worth of space between them. */
+.hr-label{display:flex;align-items:center;gap:8px;margin:20px 0 16px;font-size:13px;color:var(--muted)}
+/* The same line without a caption, for a break that needs no name. Same
+   rhythm as .hr-label so the two never sit at different heights. */
+.hr{border:0;height:1px;background:var(--line);margin:20px 0 16px}
+.hr-label::after{content:"";flex:1;height:1px;background:var(--line)}
+.hr-label__caps{text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.kpi{background:#fafbfa;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.kpi__k{display:flex;align-items:center;gap:5px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+/* The KPI alert badge (2026-08-23), replacing the value-based gradient that
+   used to tint every tile's top border. That gradient was always on, so it
+   carried no information; this is absent unless something is genuinely
+   unusual (services/dashboard_metrics.py's ap_kpi_alerts). Amber, not the
+   alert red: these are "worth a look," not "something is broken" -- the red
+   stays reserved for a real failure state. `title` carries the reason, so
+   the icon is never the whole message. */
+/* A tile whose alert fired takes the --alert card treatment: red ground,
+   red border, red label and icon. Red and not the --amber every *banner*
+   in the app uses, and the distinction is a real one rather than a
+   one-off (2026-08-23, operator's call):
 
-/* --- histórico de costo (PLAN.md §7.7) -------------------------------- */
-/* An inline SVG the server rendered, in restaurant-manager's own shape --
-   no charting library, because a line and six numbers do not justify
-   200 kB of vendored JavaScript, and an <svg> works with no client code at
-   all. `height:auto` and never a fixed CSS height: a fixed one would force
-   preserveAspectRatio="none" and stretch the point circles into ellipses. */
-.cost-chart { width: 100%; height: auto; display: block; margin: 10px 0 6px; }
-.cost-chart__line { fill: none; stroke: var(--teal); stroke-width: 2; }
-/* Backfilled stretches, drawn so a mostly-estimated chart cannot be
+     * **Amber is a queue.** "N notas de crédito esperando revisión", "N
+       servicios con el período actual sin pagar" -- something is waiting
+       for the operator to act on it, and it clears when they do.
+     * **Red is a number that is bad.** These tiles are not a queue; nothing
+       is pending a decision. They say "this figure is unusual for you",
+       which is the app's existing critical tier -- the same one --chart-bad
+       and .pip--alert already occupy, both red.
+
+   That split already existed in the pips (.pip--warn amber, .pip--alert
+   red); this brings the KPI tiles in line with it.
+
+   Note this is not a return to 0.51/0.54's health gradient: that tinted
+   *every* tile on *every* screen by its share of Por pagar, so the color
+   was always on and therefore said nothing. This appears only when a rule
+   actually fired -- the color carries the same information as the icon,
+   just visible from further away. 6.4:1 on its own ground. */
+.kpi--alert{border-color:var(--alert);background:var(--alert-soft)}
+.kpi--alert .kpi__k{color:var(--alert)}
+.kpi__alert{display:inline-flex;align-items:center;color:var(--alert);cursor:help;flex:0 0 auto}
+.kpi__alert svg{width:13px;height:13px}
+.kpi-row .kpi__alert svg{width:12px;height:12px}
+.kpi__v{display:block;margin-top:5px;font-size:17px;font-weight:600;color:var(--ink);white-space:nowrap}
+/* AP-health accent (0.51, value-based since 0.54): a thin top edge, not a
+   fill -- each KPI tile's own border-top color is computed per request
+   (dashboard_metrics.ap_kpi_colors, inline style, not a fixed class here
+   anymore) from that tile's own share of Por pagar, so it can't be
+   expressed as a handful of static classes the way a fixed per-tile-type
+   color could. */
+.async-panel:empty:not(.htmx-request){display:none}
+.async-panel{margin-top:12px}
+.meta{display:flex;gap:26px;flex-wrap:wrap;margin-top:10px}
+.meta__k{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.meta__v{display:block;margin-top:2px;font-size:13.5px}
+
+/* ── chart cards (dashboard) ──────────────────────────────────────────────
+   One chart per card, per the dataviz skill's mark specs: hairline grid,
+   no chart border, complementary stats as small cards in the card's own
+   header, upper right. */
+.card__head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.card__head .card__h,.card__head .card__s{margin-bottom:0}
+.kpi-row{display:flex;gap:8px;flex-wrap:wrap;flex:0 0 auto}
+/* Keeps a card's KPI cluster pinned to the top right, on the header's own
+   line, instead of letting a long title/subtitle push it onto a line of
+   its own. The text block is what gives: min-width:0 lets it wrap
+   internally rather than forcing the whole flex container to wrap.
+
+   Opt-in rather than a change to .card__head itself -- several card heads
+   elsewhere in the app carry a *filter* row up there instead of KPIs
+   (.filters--compact), and those genuinely should drop to their own line
+   when space runs out. Below the layout breakpoint this releases back to
+   wrapping, since on a phone there is no "upper right" worth defending. */
+.card__head--pinned{flex-wrap:nowrap}
+.card__head--pinned>:first-child{min-width:0;flex:1 1 auto}
+.card__head--pinned>.kpi-row{flex-wrap:nowrap}
+@media (max-width:820px){
+  .card__head--pinned{flex-wrap:wrap}
+  .card__head--pinned>.kpi-row{flex-wrap:wrap}
+}
+.kpi-row .kpi{padding:7px 12px;min-width:0}
+.kpi-row .kpi__k{font-size:10px;white-space:nowrap}
+.kpi-row .kpi__v{font-size:14px;margin-top:2px}
+/* The two cards in a .row are stretched to equal height by CSS Grid
+   (align-items:stretch, the grid default) -- these make the category
+   card's own content actually *use* that extra height instead of leaving
+   dead space below a fixed-size donut, by turning the card into a flex
+   column whose chart-card__body grows to fill whatever height the row
+   ends up being. */
+/* min-width:0 is the same fix `.row>.field` above already carries, and it
+   is needed here for the same reason: a grid `1fr` track is
+   `minmax(auto, 1fr)`, so its *minimum* is the content's min-content
+   width. A card holding a table whose columns are `nowrap` (or a
+   `card__head--pinned`, which cannot wrap its KPI onto a second line) has
+   a large min-content width, and that blows the track past an even split
+   -- the two cards in the row stop being the same width, which is exactly
+   what "same width and height" asks for. Without this, the Servicios card
+   (a three-column table) pushed itself wider than the Gastos fijos card
+   beside it. */
+.row>.card{display:flex;flex-direction:column;min-width:0}
+.chart-card__body{display:flex;gap:22px;flex-wrap:wrap;align-items:center;flex:1 1 auto;min-height:0}
+.chart-card__plot{flex:1 1 260px;min-width:0}
+/* Square (aspect-ratio:1) and height:100% of chart-card__body together --
+   not a fixed pixel size -- so the donut grows with the card's height
+   (driven by its taller sibling) without distorting into an oval; capped
+   so an extreme sibling height doesn't blow the donut up unreasonably. */
+.donut-wrap{position:relative;height:100%;max-height:280px;aspect-ratio:1;flex:0 1 auto;overflow:hidden}
+.donut-center{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;pointer-events:none;
+}
+.donut-center__k{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.donut-center__v{font-size:15px;font-weight:600;color:var(--ink);margin-top:2px}
+.legend-list{
+  list-style:none;margin:0;padding:0;flex:1 1 200px;min-width:180px;
+  height:100%;display:flex;flex-direction:column;justify-content:center;gap:2px;
+  overflow-y:auto;
+}
+/* justify-content:space-evenly used to spread every entry across the
+   donut's full height -- fine at the original six slices, but the pie
+   disaggregates every producto category now (2026-08-23) and typically
+   carries 7-8, so the same rule stretched them out with visible gaps
+   between labels. Centered with a small fixed gap instead: the list packs
+   tight regardless of count, and overflow-y:auto is the backstop for a
+   month with more categories than the card is tall. */
+.legend-list li{display:flex;align-items:baseline;gap:8px;padding:3px 6px;font-size:13px;border-radius:5px}
+.legend-swatch{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+.legend-list__name{flex:1;color:var(--ink)}
+/* Resumen's two click-a-slice pies (2026-09-02): a legend item doubles as
+   the slice's click target, so it needs its own hover/active affordance --
+   the donut on /dashboard is display-only and never needed one. */
+.legend-list li:hover{background:var(--paper)}
+.legend-list li.is-active{background:var(--teal-soft)}
+.legend-list li.is-active .legend-list__name{color:var(--teal);font-weight:600}
+
+/* ── pagination (Google-results style: prev/next words + a page-number
+   strip that collapses distant pages to an ellipsis) -- buttons here are
+   plain .btn/.btn--ghost/.btn--solid, same component as everywhere else
+   in the app; this block is layout only. ─────────────────────────────── */
+.pagenav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:12px}
+.pagenav .btn{padding:6px 12px}
+.pagenav__ellipsis{color:var(--muted);font-size:12.5px;padding:0 3px}
+.crumb{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.tabs__link{
+  padding:9px 14px;font-size:13.5px;color:var(--muted);
+  border-bottom:2px solid transparent;margin-bottom:-1px;
+}
+.tabs__link:hover{color:var(--ink);text-decoration:none}
+.tabs__link.is-on{color:var(--ink);font-weight:500;border-bottom-color:var(--teal)}
+.flash{
+  background:var(--teal-soft);border:1px solid #cfe0db;color:var(--teal-ink);
+  padding:9px 14px;border-radius:var(--r);font-size:13px;margin-bottom:16px;
+}
+.flash--warn{background:var(--amber-soft);border-color:#f0ddb0;color:var(--amber)}
+/* ── checkbox (native input kept for real form semantics/focus/keyboard,
+   same "hidden input + generated visual" convention .msel__opt already
+   uses -- visually hidden via 0×0/opacity, never display:none, so it stays
+   in the tab order and keeps working with no JS at all) ─────────────────── */
+.check{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}
+.check input[type=checkbox]{position:absolute;width:0;height:0;opacity:0;pointer-events:none}
+.check__box{
+  position:relative;flex:0 0 auto;width:16px;height:16px;
+  border:1px solid var(--line);border-radius:4px;background:var(--surface);
+  transition:background .12s,border-color .12s;
+}
+.check input[type=checkbox]:checked+.check__box{background:var(--teal);border-color:var(--teal)}
+.check input[type=checkbox]:checked+.check__box::after{
+  content:"";position:absolute;left:4px;top:1px;width:5px;height:9px;
+  border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);
+}
+.check input[type=checkbox]:focus-visible+.check__box{box-shadow:0 0 0 3px var(--teal-soft)}
+.check input[type=checkbox]:disabled+.check__box{opacity:.5}
+.check:has(input[type=checkbox]:disabled){cursor:not-allowed}
+/* A checkbox beside a two-line explanation aligns to the first line, not
+   to the middle of the block -- the tick belongs next to the thing it is
+   ticking, which is the title. («Qué entra en la cola de mapeo».) */
+.check--alto{align-items:flex-start}
+.check--alto .check__box{margin-top:2px}
+/* A number of days is three characters wide; an input spanning the card
+   promises a sentence. */
+.ajuste__dias .campo-uni{max-width:200px}
+
+/* ── file input (Gastos fijos' "Registrar pago" factura PDF) -- same
+   hidden-native-input + styled sibling convention as .check's own custom
+   checkbox: the real <input type=file> stays in the tab order and fully
+   functional (a <label> wrapping it opens the native file picker on
+   click, no JS needed for that part); a small delegated script in
+   base.html updates .file-input__name to the chosen filename. ────────── */
+.file-input{display:flex;align-items:center;gap:10px;cursor:pointer;margin-top:6px}
+.file-input input[type=file]{position:absolute;width:0;height:0;opacity:0;pointer-events:none}
+.file-input__btn{
+  font:inherit;font-size:13.5px;font-weight:500;flex:0 0 auto;
+  padding:8px 15px;border-radius:var(--r);white-space:nowrap;
+  background:var(--teal);border:1px solid var(--teal);color:#fff;
+  transition:background .12s;
+}
+.file-input:hover .file-input__btn{background:var(--teal-ink);border-color:var(--teal-ink)}
+.file-input input[type=file]:focus-visible+.file-input__btn{box-shadow:0 0 0 3px var(--teal-soft)}
+.file-input__name{color:var(--muted);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── dashboard alert box ───────────────────────────────────────────────── */
+/* Three separate full-width alert banners pushed the KPIs and the Gasto
+   chart below the fold, which defeated the point of a dashboard. One
+   collapsed row keeps the count permanently visible and puts the detail one
+   click away. Built on <details>/<summary> like the nav rail's own group:
+   no JS, keyboard and screen-reader behaviour for free. */
+.alertbox{
+  border:1px solid var(--amber);
+  background:var(--amber-soft);
+  border-radius:var(--r);
+  margin-bottom:20px;
+}
+.alertbox__head{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:10px 14px;cursor:pointer;list-style:none;
+  font-size:13.5px;color:var(--amber);
+}
+.alertbox__head::-webkit-details-marker{display:none}
+.alertbox__title{display:flex;align-items:center;gap:8px;font-weight:500}
+.alertbox__title .alert-icon{width:15px;height:15px;flex:0 0 auto}
+/* The affordance doubles as the state label, so the row never reads as a
+   dead-end line of text. */
+.alertbox__hint{font-size:12px;color:var(--amber);opacity:.75;white-space:nowrap}
+.alertbox__hint::after{content:" \25be"}
+.alertbox[open] .alertbox__hint::after{content:" \25b4"}
+.alertbox__body{padding:0 14px 12px;display:flex;flex-direction:column;gap:8px}
+.alertbox__row{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding-top:10px;border-top:1px solid rgb(138 85 16 / .18);
+}
+.alertbox__msg{margin:0;font-size:13.5px;color:var(--ink-2)}
+@media (max-width:820px){
+  .alertbox__row{flex-direction:column;align-items:stretch}
+  .alertbox__row .btn{width:100%;justify-content:center;min-height:44px}
+  .alertbox__hint{display:none}
+}
+
+@media (max-width:820px){
+  :root{--rail-w:0px}
+  .rail{position:static;width:auto;flex-direction:row;align-items:center;
+        gap:14px;padding:12px 16px;overflow-x:auto;
+        border-right:0;border-bottom:1px solid var(--line)}
+  .rail__brand{border:0;padding:0;margin:0}
+  /* Desktop spans the logo to the rail's own width (a full column); here
+     the rail is a horizontal strip and .rail__brand is one flex item
+     among the nav links, so width-spanning has nothing to span -- height-
+     capped instead, short enough to sit level with 14px nav text. */
+  .rail__logo{width:auto;max-height:22px}
+  .rail__nav{flex-direction:row;padding:0}
+  .stage{margin-left:0;padding:20px 16px 60px}
+  .row{grid-template-columns:1fr}
+  .row--id{grid-template-columns:1fr}
+  .grid thead{display:none}
+  .grid td{display:block;border:0;padding:3px 14px}
+  .grid tbody tr{display:block;padding:10px 0;border-bottom:1px solid var(--line-2)}
+
+  /* Stacked tables lose their header row, which on a data table is fine
+     (the first cell is a name and the rest read in context) but is not
+     fine on the two tables the operator actually fills in from a phone:
+     Conteo's "Cantidad contada" and Liquidación's "Monto a aplicar" both
+     become an unlabelled number box next to other unlabelled numbers.
+     A cell carrying data-label reprints its own header here.
+     Deliberately opt-in per cell rather than automatic -- most cells read
+     better without the repetition, and a label on all of them turns a
+     five-row table into a wall. */
+  .grid td[data-label]::before{
+    content:attr(data-label);
+    display:block;
+    font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:1px;
+  }
+  /* Right-aligning a number under its own left-aligned label reads as two
+     unrelated things once the columns are gone. */
+  .grid td.ta-r{text-align:left}
+
+  /* Number entry: a 120px box beside a 44px-minimum tap target is a
+     mis-tap waiting to happen, and iOS zooms the viewport on focus for
+     any input under 16px. Both fixed here rather than per template. */
+  .grid td input[type=number],
+  .grid td input[type=text]{
+    width:100% !important;
+    text-align:left !important;
+    font-size:16px;
+    min-height:44px;
+  }
+  .check__box{min-width:22px;min-height:22px}
+
+  /* A submit button below a long table is a scroll to the bottom and back
+     for every correction. Both batch forms pin theirs instead. */
+  .stickyact{
+    position:sticky;bottom:0;z-index:5;
+    margin:0 -16px;padding:10px 16px;
+    background:var(--surface);
+    border-top:1px solid var(--line);
+    box-shadow:0 -4px 12px rgb(20 24 26 / .06);
+  }
+  .stickyact .btn{width:100%;justify-content:center;min-height:44px}
+
+  /* Filter rows above these tables stack; each control should own the
+     full width rather than sitting at its natural content width. */
+  .row .field select,.row .field input,.row .field .msel{width:100%}
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   menu-builder's own layer.
+
+   Everything ABOVE this line is restaurant-manager's app.css, verbatim
+   (see the header). Everything below is this app's — the builder, the
+   cost panel, the mapping triage — which upstream has no equivalent of.
+   That split is DESIGN.md D33: the shell is upstream's, the canvas is
+   ours. Do not edit the upstream half here; port it and re-stamp the sha.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── tokens this app adds ─────────────────────────────────────────────── */
+:root{
+  /* Minimum touch target. The kitchen runs this on a tablet (DESIGN.md
+     §4), so any control a finger can reach is at least this tall. */
+  --tap:44px;
+  /* Direction on a cost, not a severity tier: up is the bad way for a
+     cost to move, which is why it borrows the alert colour without being
+     an alert. */
+  --trend-up:var(--alert);
+  --trend-down:var(--teal);
+}
+
+/* Money and quantities are compared by eye down a column; proportional
+   digits make ₡1 225.75 and ₡818.00 fail to line up. Every right-aligned
+   cell is a number in this app, so .ta-r carries it. */
+.ta-r,.tnum{font-variant-numeric:tabular-nums}
+
+.trend--up{color:var(--trend-up)}
+.trend--down{color:var(--trend-down)}
+
+/* An empty screen still has to teach. The prose in these is load-bearing
+   -- "un insumo es lo que usa la cocina: «Pechuga deshuesada», no «filete
+   de pechuga deshuesada de Aviocal»" -- so it gets real space. */
+.empty{color:var(--muted);margin:0}
+.empty__hint{color:var(--muted);font-size:13px;margin:8px 0 0;max-width:56ch;line-height:1.5}
+
+/* Upstream's .flash covers the teal and amber cases; a cost that is
+   simply wrong (a cycle, an incompatible unit) is neither a queue nor a
+   confirmation, and needs the alert palette. */
+.flash--alert{background:var(--alert-soft);border-color:#f0cdc9;color:var(--alert)}
+.flash a{color:inherit;text-decoration:underline}
+
+/* ── the builder (DESIGN.md §3.1) ─────────────────────────────────────── */
+/* Palette, plate, inspector. At 1440 the three are permanent (D40); below
+   1280 the inspector becomes a drawer over the palette (D41), because a
+   third column there would leave the plate 172px -- narrower than the
+   stepper it has to hold. Below 900 everything stacks, palette first:
+   you pick before you place. */
+/* Three columns at 1440 (D40). Below 1280 the inspector stops being a
+   column and becomes a drawer over the palette (D41) -- decided by
+   arithmetic, not taste: at 1024px the stage is 744px, so a third column
+   would leave the plate 172px, narrower than the stepper it has to hold.
+   Below 900 everything stacks, palette first: you pick before you place. */
+/* Two columns by default; the third appears only when a line is actually
+   selected, so an unselected builder has no empty gutter down its right.
+   The template adds `.builder--insp` because it already knows -- cheaper
+   and more portable than asking CSS to work it out with `:has()`. */
+.builder{display:grid;grid-template-columns:244px minmax(0,1fr);gap:16px;align-items:start}
+.builder--insp{grid-template-columns:244px minmax(0,1fr) 296px}
+/* The plate. `min-width:0` because a grid `1fr` track is `minmax(auto,1fr)`
+   -- its minimum is the content's min-content width, and a composition bar
+   or a nowrap money column would otherwise push the track past its share
+   and squeeze the palette. Same trap upstream documents on `.row>.card`. */
+.builder__lineas{min-width:0}
+@media (max-width:1279px){
+  /* The inspector stops being a column here and becomes a drawer. */
+  .builder--insp{grid-template-columns:244px minmax(0,1fr)}
+}
+@media (max-width:899px){
+  .builder,.builder--insp{grid-template-columns:1fr}
+}
+
+/* ── paleta ───────────────────────────────────────────────────────────── */
+.paleta{padding:14px;max-height:78vh;overflow-y:auto}
+.paleta__buscar{margin-bottom:12px}
+.paleta__sec{margin:16px 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.paleta__sec:first-of-type{margin-top:4px}
+.paleta__pie{margin:16px 0 0;font-size:11.5px;color:var(--muted);line-height:1.4}
+/* Not a drag handle any more: the row is a form you can scroll past with
+   a finger, and only its grip lifts it (D34). */
+.pal{
+  display:flex;align-items:center;gap:8px;
+  min-height:var(--tap);padding:6px 8px;
+  border:1px solid transparent;border-radius:var(--r);
+  user-select:none;
+}
+.pal:hover{background:var(--paper);border-color:var(--line)}
+.pal__nombre{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pal__unidad{font-size:11.5px;color:var(--muted)}
+.pal.is-arrastrando{opacity:.45}
+/* The palette item's own "Agregar" button is the primary path -- dnd.js
+   works by submitting exactly this form (D34). Visible on hover and on
+   focus, never hover-only: a tablet has no hover. */
+.pal .btn{opacity:0;transition:opacity .12s}
+.pal:hover .btn,.pal:focus-within .btn{opacity:1}
+@media (hover:none){.pal .btn{opacity:1}}
+
+/* ── las líneas de la receta (§3.2) ───────────────────────────────────── */
+/* No per-row cost bar and no % column: cost share is the composition bar
+   and only the composition bar (D39). A row carries identity, quantity
+   and money -- nothing that is drawn elsewhere. */
+.lineas{border:0;border-radius:0}
+/* The rows are <div>s now, not a <table>. They were a table until step
+   2.2, and this rule set landed one build early against that markup:
+   `display:flex` on a <tr> drops it out of the table's column model while
+   the <thead> keeps laying out as a table, so the headers float free of
+   the cells beneath them. Layout CSS ships WITH the markup it assumes. */
+.lineas{border-top:1px solid var(--line)}
+.lineas__head{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 2px;border-bottom:1px solid var(--line);
+  font-size:11px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);
+}
+.linea{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line-2);cursor:pointer}
+.linea:hover{background:#fafcfb}
+/* The selected row, whose «¿por qué?» the inspector is showing. */
+.linea.is-sel{box-shadow:inset 3px 0 0 0 var(--teal);background:#fafbfa}
+.linea__nom{flex:1;min-width:0}
+.linea__nom a{color:var(--ink);font-weight:600;text-decoration:none}
+.linea__nom a:hover{color:var(--teal);text-decoration:underline}
+/* Ties the row to its segment in the composition bar. */
+.linea__sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;vertical-align:0}
+.linea__sub{display:block;font-size:11.5px;color:var(--muted);margin-top:1px;font-variant-numeric:tabular-nums}
+.linea__cant{width:212px;flex:0 0 212px}
+/* Centred by request. Note the trade: a right-aligned column of money
+   lines its decimal points up, which is what makes two costs comparable
+   at a glance; centred, they do not. tabular-nums stays either way so the
+   digits keep a constant width. */
+.linea__costo{width:104px;flex:0 0 104px;text-align:center;font-weight:500;font-variant-numeric:tabular-nums}
+.linea__acc{width:104px;flex:0 0 104px;display:flex;justify-content:flex-end;gap:5px}
+.lineas__head .linea__nom,
+.lineas__head .linea__cant,
+.lineas__head .linea__costo{text-align:center}
+.linea--faltante{background:var(--amber-soft)}
+.linea.is-arrastrando{opacity:.4}
+.linea.is-destino{box-shadow:inset 0 2px 0 0 var(--teal)}
+
+/* The stepper. `−` value `+` reads as one control, so the three share a
+   border run. The middle stays a real text input: a comma is a valid
+   decimal separator here and `type=number` refuses it. */
+/* `−` value `+` reads as one control, so the three share a border run.
+   The middle stays a real text input, never type=number: a comma is a
+   valid decimal separator in Costa Rica and type=number silently refuses
+   it.
+
+   The DOM order is «Aplicar», −, input, +, unidad; `order` lays them out
+   as − input + unidad «Aplicar». That inversion is deliberate and load-
+   bearing: a form submitted with Enter uses its FIRST submit button, so
+   with `−` first, typing a quantity and pressing Enter would step the
+   value down instead of applying what was typed. Do not "tidy" the DOM to
+   match the visual order. */
+.step{display:flex;align-items:center;justify-content:center}
+.step__b{
+  order:1;width:30px;min-height:34px;padding:0;flex:0 0 auto;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+  font:inherit;font-size:15px;line-height:1;cursor:pointer;
+}
+.step__b:hover{background:var(--paper)}
+.step__b--menos{order:1;border-radius:var(--r) 0 0 var(--r)}
+.step__v{
+  order:2;width:60px;flex:0 0 60px;margin:0 -1px;padding:6px 4px;
+  text-align:center;border-radius:0;font-variant-numeric:tabular-nums;
+}
+.step__b--mas{order:3;border-radius:0 var(--r) var(--r) 0}
+.step__u{order:4;width:auto;min-width:0;flex:0 0 auto;margin-left:6px;padding:6px 24px 6px 9px}
+/* Redundant while htmx is running -- the input posts on change and the
+   steppers are submit buttons -- and the ONLY way to apply a typed
+   quantity without it. So it is shown exactly when it is needed.
+   It stays FIRST in the DOM either way: a form submitted with Enter uses
+   its first submit button, and if that were «−» then typing a quantity
+   and pressing Enter would step the value down instead of applying it.
+   A display:none submit is still the form's default button per spec,
+   so Enter keeps working when the button is not on screen. */
+.step__ok{order:5;margin-left:6px;display:none}
+.sin-js .step__ok{display:inline-flex}
+
+/* ── el desglose anidado (§3.5) ───────────────────────────────────────── */
+/* The nest is drawn, not disclosed: indentation and a rule, never a
+   <details> in a table cell. Percentages stay here and only here -- the
+   composition bar spans the plate's lines, not the inside of a batch, so
+   in here the number is the only signal (D39). */
+.desglose{
+  background:var(--paper);border-bottom:1px solid var(--line-2);
+  border-left:3px solid var(--acento,var(--line));
+  padding:2px 14px 10px 34px;
+}
+.desglose>summary{
+  list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
+  padding:8px 0;margin:0;
+}
+.desglose>summary::-webkit-details-marker{display:none}
+.desglose>summary::before{
+  content:"";width:0;height:0;flex:0 0 auto;
+  border-left:5px solid var(--muted);border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform .12s;
+}
+.desglose[open]>summary::before{transform:rotate(90deg)}
+.desglose>summary:hover{color:var(--ink)}
+.desglose__t{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.desglose__lista{border-left:1px solid var(--line);padding-left:14px}
+.desglose__fila{display:flex;align-items:center;padding:4px 0;font-size:13px}
+.desglose__fila>:first-child{flex:1;min-width:0}
+.desglose__n{width:100px;flex:0 0 100px;text-align:right;color:var(--muted)}
+.desglose__c{width:110px;flex:0 0 110px;text-align:center}
+.desglose__p{width:64px;flex:0 0 64px;text-align:right;color:var(--muted)}
+.desglose__tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;color:var(--muted);font-size:12px}
+
+/* ── la zona de soltar ────────────────────────────────────────────────── */
+.soltar{
+  margin:12px 14px;padding:13px;
+  border:1px dashed #cfd6d3;border-radius:var(--r);
+  color:var(--muted);text-align:center;font-size:13px;
+}
+.soltar.is-encima{border-color:var(--teal);background:var(--teal-soft);color:var(--teal)}
+
+/* ── la barra de composición (§3.3) ───────────────────────────────────── */
+/* The ONLY place cost share is expressed. Not decoration: if it goes, the
+   answer to "what is actually expensive here" goes with it. Colours are
+   upstream's --chart-cat-*, which were CVD-searched (D37) -- never a
+   second categorical palette. */
+.comp{padding:4px 14px 0}
+.comp__t{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+/* Amber, because an incomplete composition is a QUEUE -- something the
+   operator can clear by mapping the missing insumo -- not a bad number. */
+.comp__t--parcial{text-transform:none;letter-spacing:0;font-size:12px;color:var(--amber)}
+.comp__bar{display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--line-2)}
+.comp__seg{min-width:0}
+.comp__seg.is-on{filter:brightness(1.12)}
+.comp__leg{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:11.5px;color:var(--ink-2)}
+.comp__li{display:flex;align-items:center;gap:5px;cursor:default}
+.comp__sw{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+
+/* ── totales (§3.4) ───────────────────────────────────────────────────── */
+.totales{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
+.kpi--fuerte{border-color:var(--teal);background:var(--teal-soft)}
+.kpi--fuerte .kpi__k,.kpi--fuerte .kpi__v{color:var(--teal)}
+.kpi__v--sm{font-size:14px}
+.kpi__v--xl{font-size:20px}
+/* The delta chip. The digits themselves snap -- an animation the operator
+   sees forty times a day reads as lag, not feedback (§3.4). */
+.delta{font-size:12px;font-weight:600;margin-left:8px}
+.delta--up{color:var(--alert)}
+.delta--down{color:var(--teal)}
+@media (prefers-reduced-motion:no-preference){
+  .delta{animation:delta-fade 1.4s ease-out forwards}
+}
+@keyframes delta-fade{0%,55%{opacity:1}100%{opacity:0}}
+
+/* ── el inspector (§3.1) ──────────────────────────────────────────────── */
+.insp__k{margin:0 0 3px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.insp__cifra{display:block;font-size:30px;font-weight:600;color:var(--teal);line-height:1.1}
+.insp__unidad{display:block;font-size:13px;color:var(--muted);margin-bottom:14px}
+.insp__tabla{width:100%;border-collapse:collapse;font-size:12.5px}
+.insp__tabla td{padding:5px 0}
+.insp__tabla td:first-child{color:var(--muted)}
+.insp__tabla td:last-child{text-align:right}
+.insp__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.insp__head .card__h,.insp__head .card__s{margin-bottom:0}
+.insp__avisos{margin:14px 0 0;padding-left:18px}
+.insp__pie{margin:16px 0 0;font-size:12.5px}
+/* Below 1280 it slides in over the palette rather than taking a column
+   (D41). The pane is rendered only when a line is selected and closed by
+   a link back to the same URL without `?linea=`, so this works with no JS
+   at all -- there is no open/closed state in CSS to get out of step.
+
+   Four things here are load-bearing and were wrong in the first pass, all
+   of them invisible until the layout is actually driven at this width:
+
+   - `align-self:start`, never `stretch`. A stretched grid item is exactly
+     as tall as its row, and a sticky element with no room inside its
+     containing block never sticks -- `position:sticky` was a no-op, and
+     the card was stretched to the full height of the lines column with
+     its content stranded at the top.
+   - It is WIDER than the column it sits in. The palette's track is 244px;
+     an explanation with a ₡4.36 figure, a five-row table and two warnings
+     needs more, and an overlay is entitled to overflow the track it is
+     painted in.
+   - Its own scroll, capped to the viewport. Otherwise a long explanation
+     runs off the bottom of a sticky element and the last line is
+     unreachable.
+   - **The palette underneath is `visibility:hidden`.** Painting over it is
+     not covering it: it stays in the tab order and in the accessibility
+     tree, so Tab walks into controls nobody can see. `visibility` (not
+     `display`) keeps the 244px track, which is what the drawer is
+     positioned against. */
+@media (max-width:1279px){
+  .insp{
+    grid-column:1;grid-row:1;align-self:start;
+    position:sticky;top:16px;z-index:4;
+    width:min(340px,86vw);
+    max-height:calc(100vh - 32px);overflow-y:auto;
+    box-shadow:0 10px 30px rgb(10 20 18 / .12);
+  }
+  .builder--insp .paleta{visibility:hidden}
+}
+/* Stacked, there is nothing to be a drawer over: the palette is a
+   full-width block above the lines, and a 340px card floating on top of
+   it would cover a third of it and look like a mistake. So below 900 the
+   pane returns to the flow, where the DOM already puts it -- after the
+   lines, which is where you were looking when you selected one. */
+@media (max-width:899px){
+  .insp{
+    position:static;grid-column:1;grid-row:auto;
+    width:auto;max-height:none;overflow:visible;box-shadow:none;
+  }
+  .builder--insp .paleta{visibility:visible}
+}
+
+/* ── costo + explicación (/insumos/{id}) ──────────────────────────────── */
+.costo{display:flex;align-items:baseline;gap:8px;margin:6px 0 4px}
+.costo__cifra{font-size:30px;font-weight:600;color:var(--teal)}
+.costo__unidad{color:var(--muted)}
+
+
+/* ── mapeo: el cribador (§3.7) ────────────────────────────────────────── */
+
+/* Search and the category picker on one line: they are the two things
+   that narrow *this* visit. The scope -- familias, días -- is not here at
+   all; it is app policy and it lives on `/ajustes`.
+
+   No card around any of it. A card earns its heading, border and icon by
+   grouping things that need to be named together; this one was wrapped
+   around a search box, on the screen the operator opens four hundred
+   times. The bar sits straight on the page now. */
+.cribar{margin-bottom:8px}
+.cribar__b{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.cribar__q{flex:1 1 260px;min-width:0}
+.cribar__cat{flex:0 1 300px;min-width:220px}
+/* «Filtrar» is the no-JS path and only that: with htmx running, typing
+   IS the filter and a button to confirm it is a second step for a
+   decision already made. Same trick as the simulador's «Recalcular» --
+   shown exactly when it is the only way through. */
+.cribar__ir{display:none}
+.sin-js .cribar__ir{display:inline-flex}
+
+/* The scope, stated. These were two checkboxes, and a checkbox is a thing
+   you can flip -- one stray click beside a button that dismisses everything
+   matching it. `.pip` and not a new component: this is the same "a fact
+   about this row" capsule the card below already uses, which is exactly
+   what these are now. */
+.alcance{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:0 0 18px;font-size:12px;color:var(--muted);
+}
+.alcance__k{color:var(--muted)}
+.alcance__a{color:var(--teal);text-decoration:none;font-size:11.5px}
+.alcance__a:hover{text-decoration:underline}
+
+/* ── mapeo: la cola de triage (§3.7) ──────────────────────────────────── */
+.mapeo__prog{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.mapeo__pista{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.mapeo__hecho{height:100%;background:var(--teal)}
+/* The product's own description, straight from the invoice. It was set in
+   `--mono` to say "this is upstream's text, not ours" -- but it is the
+   heading of the card, the first thing read four hundred times, and a
+   monospaced heading here is the only one in either app. One typeface
+   across the whole product beats the provenance hint; provenance is
+   already carried by the pills below it. */
+.mapeo__desc{
+  margin:0 0 8px;font-size:19px;font-weight:600;
+  letter-spacing:-.01em;line-height:1.3;
+}
+.mapeo__lectura{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  background:#fafbfa;border:1px solid var(--line);border-radius:var(--r);
+  padding:13px 16px;margin-bottom:20px;
+}
+.mapeo__crudo{font-family:var(--mono);font-size:14px;padding:3px 8px;border-radius:4px;background:var(--teal-soft);color:var(--teal)}
+/* A suggestion must never wear a confirmation's clothes: nothing is
+   active until a person confirms it (non-negotiable #4). Neutral chrome,
+   and the pip says "sin confirmar" in words. */
+.mapeo__destino{
+  display:flex;align-items:center;gap:12px;
+  border:1px solid var(--line);background:var(--surface);
+  border-radius:var(--r);padding:14px 16px;margin-bottom:10px;
+}
+/* The form is a plain block so `.rejilla` can lay the fields out exactly
+   as /insumos/nuevo does -- same grid, same label-above-input .field. It
+   used to be a flex strip with squeezed inline labels, which read as a
+   filter bar rather than as the form that decides a cost. */
+.mapeo__form{display:block}
+/* Field groups on the triage card. The insumo form separates dimensions
+   into their own cards; a card inside a card is too much furniture here,
+   so the same separation is a lined box -- one per set of fields that fail
+   together. `--paper` on a `--surface` card keeps the boxes legible while
+   leaving the white pips inside them still readable. */
+/* `stretch` (the default) rather than `flex-start`: the boxes sharing a
+   row settle at one height, so a longer hint in one of them does not leave
+   the other two looking clipped. */
+.campos{display:flex;flex-wrap:wrap;gap:12px}
+.campos__g{
+  flex:1 1 210px;min-width:0;
+  background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--r);padding:12px 14px;
+}
+.campos__g--todo{flex-basis:100%}
+.campos__g .field{margin-bottom:0}
+/* The cost this fuente would produce, live under the fields that decide
+   it. Teal because it is the answer the card exists to produce, not a
+   warning -- the amber inside it belongs to a stale price, which IS a
+   queue. */
+.costo-prev{
+  background:var(--teal-soft);border:1px solid #cfe0db;
+  border-radius:var(--r);padding:12px 14px;margin-top:12px;
+}
+.costo-prev__h{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:var(--teal-ink)}
+.costo-prev__v{margin:0;font-size:22px;font-weight:600;color:var(--teal-ink)}
+.costo-prev__v--sin{color:var(--muted);font-weight:500}
+.costo-prev__u{font-size:13px;font-weight:400;color:var(--muted)}
+.costo-prev__x{margin:5px 0 0;font-size:11.5px;color:var(--muted);line-height:1.5}
+/* The pip that says which rule read the factor, sitting on the label. */
+.field label .pip{margin-left:6px;font-weight:400;background:var(--surface)}
+
+/* ── histórico de costo (PLAN.md §7.7) ────────────────────────────────── */
+/* An inline SVG the server rendered, in upstream's own shape -- no
+   charting library, because a line and six numbers do not justify 200 kB
+   of vendored JavaScript. `height:auto` and never a fixed CSS height: a
+   fixed one would force preserveAspectRatio="none" and stretch the point
+   circles into ellipses. */
+.cost-chart{width:100%;height:auto;display:block;margin:10px 0 6px}
+.cost-chart__line{fill:none;stroke:var(--teal);stroke-width:2}
+/* Backfilled stretches (D32), drawn so a mostly-estimated chart cannot be
    mistaken for a mostly-observed one. */
-.cost-chart__line.es-estimado { stroke-dasharray: 5 4; opacity: .65; }
-.cost-chart__pt { fill: var(--teal); }
-.cost-chart__pt--estimado { fill: var(--surface); stroke: var(--teal); stroke-width: 1.5; }
-.cost-chart__label { font-size: 10px; fill: var(--ink-soft); }
+.cost-chart__line.es-estimado{stroke-dasharray:5 4;opacity:.65}
+.cost-chart__pt{fill:var(--teal)}
+.cost-chart__pt--estimado{fill:var(--surface);stroke:var(--teal);stroke-width:1.5}
+.cost-chart__label{font-size:10px;fill:var(--muted)}
+.spark{width:100%;height:auto;display:block}
+.spark__line{fill:none;stroke:var(--teal);stroke-width:1.8}
 
-/* Direction on a cost, not a severity tier: up is the bad way for a cost
-   to move, which is why it borrows the alert colour without being an
-   alert. Inherited verbatim from upstream. */
-.trend--up { color: var(--trend-up); }
-.trend--down { color: var(--trend-down); }
+/* ── el tablero del menú (§3.6) ───────────────────────────────────────── */
+.tablero{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:22px}
+/* The card is a link, so it needs the anchor reset the rest of the app
+   gets from `a{color:var(--teal)}` -- a whole card in teal would read as
+   one long hyperlink. */
+.plato{display:block;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.plato:hover{text-decoration:none}
+.plato__spark{display:flex;align-items:center;gap:9px;margin-top:9px}
+.plato__spark .spark{flex:1 1 auto;max-width:120px;height:26px}
+.plato:hover{border-color:var(--muted)}
+.plato__head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.plato__nom{font-weight:500;line-height:1.3}
+.plato__costo{display:block;margin:10px 0 1px;font-size:22px;font-weight:600;color:var(--teal)}
+.plato__costo--nulo{color:var(--muted)}
+.plato__pie{display:block;font-size:11.5px;color:var(--muted)}
+.plato--archivada{opacity:.62}
+.plato--nueva{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  min-height:150px;border-style:dashed;border-color:#cfd6d3;color:var(--muted);font-size:13px;
+}
+.grupo{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:var(--muted)}
+.grupo__n{text-transform:uppercase;letter-spacing:.04em}
+.grupo::after{content:"";flex:1;height:1px;background:var(--line)}
+.vistas{display:flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.vistas .btn{border:0;border-radius:0}
+.vistas .btn+.btn{border-left:1px solid var(--line)}
+.vistas .btn.is-on{background:var(--teal-soft);color:var(--teal)}
+
+/* ── vista de cocina (§3.11, D43) ─────────────────────────────────────── */
+/* Read-only, at arm's length, on a tablet propped up by the pass. No
+   costs and no controls -- a cook does not need the food cost, and a
+   screen on a pass is the least private one in the building. */
+.cocina{max-width:60rem;margin:0 auto}
+.cocina__linea{display:flex;align-items:baseline;gap:20px;padding:11px 0;border-bottom:1px solid var(--line-2)}
+.cocina__cant{width:120px;flex:0 0 120px;text-align:right;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.cocina__nom{flex:1;font-size:20px}
+.cocina__sub{border-left:1px solid var(--line);margin:2px 0 6px 140px;padding-left:16px}
+.cocina__sub .cocina__linea{border:0;padding:4px 0}
+.cocina__sub .cocina__cant{width:88px;flex:0 0 88px;font-size:15px;color:var(--muted)}
+.cocina__sub .cocina__nom{font-size:15px}
+.cocina__notas{margin-top:24px;font-size:17px;line-height:1.6;color:var(--ink-2)}
+
+/* ── modo simulador (§3.9, D42) ───────────────────────────────────────── */
+/* Nothing is written while this is on. It has to be unmistakable at a
+   glance, because the whole risk of the mode is forgetting you are in it. */
+.sim{border:1px solid var(--amber);background:var(--amber-soft);border-radius:var(--r);padding:10px 14px;margin-bottom:14px}
+.sim__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sim__t{color:var(--amber);font-weight:600;font-size:13px}
+.sim__nota{color:var(--amber);font-size:12px;margin:6px 0 0}
+.builder.is-sim .builder__plato{box-shadow:0 0 0 2px var(--amber)}
+
+/* ── arrastrar con Pointer Events (§4.1, D34) ─────────────────────────── */
+/* A grip is the only place a drag can start, and it is the only surface in
+   the builder with `touch-action:none`. That pairing is the whole touch
+   story: the browser hands us every gesture that begins on a grip, and
+   keeps every gesture that begins anywhere else -- so the palette and the
+   line list still scroll under a finger.
+
+   The old HTML5 version put `touch-action:none` on the entire `.pal` row
+   and marked it `draggable`, which killed scrolling the palette on a
+   tablet and bought nothing, because HTML5 drag never fired on touch in
+   the first place. */
+.linea__asa,.pal__asa{
+  display:flex;align-items:center;justify-content:center;
+  width:26px;flex:0 0 26px;line-height:0;
+  color:var(--muted);cursor:grab;touch-action:none;
+}
+.linea__asa:hover,.pal__asa:hover{color:var(--ink-2)}
+/* Sized by the input device, not by the viewport: a 1280px tablet needs a
+   44px grip just as much as a 700px phone does, and a 700px desktop
+   window does not. */
+@media (pointer:coarse){
+  .linea__asa,.pal__asa{width:var(--tap);flex:0 0 var(--tap);min-height:var(--tap)}
+}
+
+/* What the pointer carries while something is lifted. HTML5 drag drew
+   this for free; a touchscreen has no cursor at all, so without it a
+   lifted item is invisible until the drop. `pointer-events:none` is
+   load-bearing, not tidiness -- `elementFromPoint` would otherwise hit
+   the ghost instead of the row under the finger and nothing would ever be
+   a valid drop target.
+
+   It floats, so it gets a shadow: that is what a shadow means here (D46). */
+.arrastre{
+  position:fixed;left:0;top:0;z-index:60;pointer-events:none;
+  margin:-15px 0 0 14px;max-width:230px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  background:var(--surface);border:1px solid var(--teal);border-radius:var(--r);
+  padding:7px 12px;font-size:13px;font-weight:500;color:var(--ink);
+  box-shadow:0 8px 22px rgb(10 20 18 / .18);
+}
+/* While a drag is live: no text selection anywhere, and the grabbing
+   cursor follows the pointer rather than reverting over every row it
+   crosses. No !important needed -- `html.arrastrando *` outranks the
+   `.linea{cursor:pointer}` it has to beat. */
+.arrastrando,.arrastrando *{cursor:grabbing}
+.arrastrando{user-select:none;-webkit-user-select:none}
+
+/* ── una burbuja que también se puede tocar (§4.2) ─────────────────────── */
+/* Ported from upstream's `.date-note[data-tooltip]` and generalised. The
+   difference that matters is `:focus`, not `:focus-visible`: a tap focuses
+   the element but usually does NOT satisfy the focus-visible heuristic, so
+   upstream's rule reaches a keyboard and never a finger. Anything wearing
+   this needs `tabindex="0"` for the same reason.
+
+   `title=` is the thing this replaces. A title is hover-only, so on the
+   tablet this app targets it is information that does not exist. */
+.tip{position:relative;cursor:help}
+.tip::after{
+  content:attr(data-tooltip);
+  position:absolute;left:0;bottom:calc(100% + 6px);
+  background:var(--surface);border:1px solid var(--line);border-radius:6px;
+  box-shadow:0 10px 28px rgba(10,20,18,.14);
+  font-family:var(--ui);font-size:12px;font-weight:400;line-height:1.4;color:var(--ink);
+  white-space:normal;width:max-content;max-width:230px;padding:7px 10px;text-align:left;
+  opacity:0;visibility:hidden;transition:opacity .12s ease;pointer-events:none;z-index:30;
+}
+.tip:hover::after,.tip:focus::after{opacity:1;visibility:visible}
+@media (prefers-reduced-motion:reduce){.tip::after{transition:none}}
+
+/* ── touch (DESIGN.md §4) ─────────────────────────────────────────────── */
+/* Upstream's own mobile block already raises grid inputs to 44px. These
+   are this app's controls, which it does not know about. */
+
+/* §4.3's middle breakpoint. Between 1100 and 1279 the builder is palette +
+   plate with the inspector as a drawer (D41), and 220px of rail spent on
+   words the operator has read a thousand times is 220px the plate wants.
+   The labels go, the icons stay, and the badge shrinks to a dot -- it is
+   the only thing in the app that nags and it has to survive the collapse.
+
+   §4.3 also proposed an off-canvas sheet below 820px. Not done, and
+   deliberately: upstream already collapses the rail to a horizontal strip
+   there, that rule is ported and working, and replacing it with a bespoke
+   off-canvas panel would diverge from D33's shared shell to no benefit. */
+@media (max-width:1279px) and (min-width:821px){
+  :root{--rail-w:62px}
+  .rail{padding:16px 0}
+  .rail__brand{padding:0 8px 14px;margin-bottom:10px}
+  .rail__mark{font-size:10px;letter-spacing:0;word-break:break-word}
+  .rail__nav,.rail__foot{padding-left:8px;padding-right:8px}
+  .rail__link{justify-content:center;padding:11px 0;min-height:var(--tap)}
+  .rail__link--sub{padding-left:0}
+  .rail__t{display:none}
+  .rail__group>summary.rail__link::after{display:none}
+  /* The count would not fit; its presence is the message. */
+  .rail__link .pip{
+    position:absolute;margin:-14px 0 0 15px;
+    width:8px;height:8px;padding:0;border-radius:50%;
+    font-size:0;line-height:0;overflow:hidden;
+  }
+  .rail__link{position:relative}
+}
+
+@media (max-width:899px){
+  .linea{flex-wrap:wrap;gap:8px 0}
+  .linea__nom{flex:1 1 60%}
+  .linea__cant{flex:1 1 100%;justify-content:flex-start;order:3;width:auto}
+  .linea__costo{flex:0 0 auto;margin-left:auto}
+  .step__b{width:var(--tap);min-height:var(--tap)}
+  .step__v{width:64px;font-size:16px;min-height:var(--tap)}
+  .step__u{min-height:var(--tap)}
+  .desglose{padding-left:20px}
+  .cocina__cant{width:88px;flex:0 0 88px}
+}
+
+/* ── small utilities the templates need and upstream has no name for ──── */
+/* Deliberately few. Every one of these is a name that does NOT exist
+   upstream, so each is a small tax on "a fix pastes into either repo" --
+   add one only when there is genuinely nothing to reuse. */
+.small{font-size:12px}
+.input-sm{width:120px}
+/* A field the service rejected. Upstream has no error state on an input
+   because its forms validate differently; ValidationError here puts a
+   Spanish message beside the offending input and this marks it. */
+.btn--xs{padding:4px 9px;font-size:12px}
+/* The quantity box on a receta line. Right-aligned and tabular because it
+   sits in a column of numbers; a real text input, never type=number,
+   because a comma is a valid decimal separator in Costa Rica and
+   type=number silently refuses it. */
+.qty{width:72px;text-align:right;font-variant-numeric:tabular-nums}
+select.qty{width:auto;min-width:0;text-align:left;padding-right:26px}
+
+/* ── las formas de edición (insumos, recetas) ─────────────────────────── */
+/* These two forms are unusual: half their content is teaching prose. The
+   «Unidad base» explanation alone is five lines saying the field is how
+   the cost is *stored* and not what a recipe may write (D30) -- prose
+   that has to stay, because misreading that field is a silent
+   factor-of-1000.
+
+   One field per row plus that prose ran the insumo form ~1200px tall for
+   seven inputs. A first pass moved the prose into a sidebar column, which
+   fixed the width and not the height. This is the second pass and it
+   targets the height directly: the whole form has to fit a 1080p screen
+   with no scrolling, because a form you scroll is a form where Guardar
+   and the field you are unsure about are never visible together.
+
+   Three things get it there -- a 12-column field grid, two or three cards
+   instead of five, and §3.12's rule for the prose: the sentence that
+   would cost you money stays on screen, and only its elaboration folds.
+
+   No new component vocabulary: .card, .card__h, .field, .row, .check and
+   .btn are all upstream's (D33). Everything below only arranges them. */
+.form{max-width:none}
+/* Tighter than upstream's 20px/22px: a form is a stack of these and each
+   card's padding is paid four times over in a screen height. */
+.form .card{padding:15px 18px;margin-bottom:13px}
+
+/* A group of fields answering one question, with an icon naming it the
+   way the rail's icons name a section. */
+.bloque__h{display:flex;align-items:center;gap:9px;margin:0 0 13px}
+.bloque__h .card__h{margin:0}
+.bloque__ico{
+  display:flex;align-items:center;justify-content:center;
+  width:26px;height:26px;flex:0 0 26px;border-radius:7px;
+  background:var(--teal-soft);color:var(--teal);
+}
+
+/* Cards sit side by side, so a form is rows of objects rather than a
+   column of fields. Upstream's .row already does the even split and
+   already gives its cards equal height (`.row>.card` is a flex column);
+   --tres is the uneven one, for a row whose first card holds two fields
+   and the rest hold one. */
+.form .row{margin-bottom:13px}
+.form .row>.card{margin-bottom:0}
+.row--tres{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:12px}
+.row--tres>.card{display:flex;flex-direction:column;min-width:0}
+@media (max-width:1100px){
+  .row--tres{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media (max-width:820px){
+  .row--tres{grid-template-columns:minmax(0,1fr)}
+}
+
+/* Inside a card there are one or two fields, never a form's worth, so the
+   grid is auto-fit and needs no breakpoints of its own: a half-width card
+   lays two fields side by side and a quarter-width one stacks them.
+   --corto is a width cap rather than a column span -- a two-character
+   percentage should not grow to fill 290px just because its neighbour
+   is a plate name. */
+.rejilla{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px 16px}
+.rejilla>.field{margin-bottom:0;min-width:0}
+.rejilla>.field--corto{max-width:170px}
+.rejilla>.field--todo{grid-column:1/-1}
+
+/* `hidden` is a UA-stylesheet rule, and ANY author rule setting `display`
+   beats it -- upstream's own `.row>.card{display:flex}` is enough to make
+   a hidden card render. That is how the porciones/rendimiento swap fails:
+   both cards visible, both posting, and the service clearing whichever
+   one the tipo says is wrong, so nothing looks broken until a plato is
+   saved with a stale rendimiento. One rule, and the trap is closed for
+   every display rule added later. */
+[hidden]{display:none!important}
+
+/* The explanation, folded. The <summary> is not a label for the prose --
+   it IS the prose's one load-bearing sentence, and the fold holds only
+   the elaboration. Collapsing «la unidad base es solo cómo se guarda el
+   costo» out of sight would trade a scroll for the exact error this app
+   exists to prevent (§3.12). A <details>, so it costs no JavaScript and
+   survives with scripting off, same as the rail's own group. */
+.ayuda{margin-top:12px;border-top:1px solid var(--line-2);padding-top:9px}
+.ayuda__q{
+  display:flex;align-items:center;gap:7px;cursor:pointer;list-style:none;
+  font-size:12px;color:var(--ink-2);min-height:24px;
+}
+.ayuda__q::-webkit-details-marker{display:none}
+.ayuda__q:hover{color:var(--teal)}
+.ayuda[open] .ayuda__q{margin-bottom:9px}
+/* No transition on the chevron: §5 allows three animations in this app
+   and a disclosure arrow is not one of them. */
+.ayuda[open] .ayuda__q .ico{transform:rotate(90deg)}
+.ayuda__b{font-size:12.5px;line-height:1.55;color:var(--muted);max-width:78ch}
+.ayuda__b p{margin:0 0 8px}
+.ayuda__b p:last-child{margin-bottom:0}
+.ayuda__b strong{color:var(--ink-2)}
+
+/* A unit that belongs to the input rather than to the label: «Merma [12] %»
+   reads as one thing and leaves the label a plain noun. */
+.campo-uni{display:flex;align-items:center;gap:8px}
+.campo-uni__u{font-size:12.5px;color:var(--muted);white-space:nowrap}
+
+/* Sticky, so Guardar survives the laptop screens the form does NOT fit on
+   -- and flat, because every other card in both apps is flat. It had a
+   drop shadow and was the only surface in the app wearing one, which read
+   as a component from a different design system. The hairline and the
+   opaque ground are enough to separate it from what scrolls under it. */
+.form__pie{
+  position:sticky;bottom:0;z-index:2;
+  display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px 16px;margin-bottom:16px;
+}
+
+.actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+/* The decision goes at the end of the card, on the right, where the eye
+   lands after reading the cost -- and off the cost card, not tucked under
+   its edge: «Confirmar» writes a mapping and must not read as one more
+   control belonging to the panel above it.
+
+   `row-reverse` rather than reordering the markup: implicit submission
+   (Enter in a text field) picks the FIRST submit button in DOM order, and
+   that has to stay «Confirmar» and never «No es ese». So the DOM order is
+   the semantic one and only the painting is flipped. */
+.actions--fin{flex-direction:row-reverse;justify-content:flex-start;margin-top:22px}
+input[type=radio],input[type=checkbox]{
+  width:auto;min-width:0;padding:0;margin:0;flex:0 0 auto;accent-color:var(--teal);
+}
+/* One option per line, each a real <label>, so the whole row is the hit
+   target -- which is also how these reach a sane size on a tablet without
+   inventing a 44px radio control. */
+.radios{display:flex;flex-direction:column;gap:8px}
+.radios .check{
+  align-items:flex-start;gap:11px;line-height:1.4;min-height:var(--tap);
+  padding:10px 13px;border:1px solid var(--line);border-radius:var(--r);
+}
+.radios .check:hover{background:var(--paper)}
+.radios .check input[type=radio]{margin-top:3px}
+.radios .check:has(input:checked){border-color:var(--teal);background:var(--teal-soft)}
+.radios .check .ico{color:var(--muted);margin-top:1px}
+.radios .check:has(input:checked) .ico{color:var(--teal)}
+/* Plato vs preparación is the only choice on either form that changes
+   what the rest of the form asks for, so it is drawn as two objects side
+   by side rather than two lines of a list. */
+.radios--par{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px}
+.check__b{flex:1;min-width:0}
+.check__t{display:block;font-weight:600}
+.check__d{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:1px}
+
+.ico{flex:0 0 auto;vertical-align:-2px}
+.btn .ico{vertical-align:middle}
+
+.lineas__asa{width:22px;color:var(--muted);cursor:grab;touch-action:none}
+.lineas__acciones{display:flex;gap:4px;justify-content:flex-end}
+.linea__cantidad{display:flex;gap:4px;justify-content:flex-end;align-items:center}
+.linea__desglose td{padding-top:0}
+.grid--anidada{margin:6px 0 4px;border:0}
+.grid--anidada td{border-bottom:none;padding:3px 8px}
+
+/* `.porton` lived here -- the bulk «Ninguno es insumo — descartar N»
+   gate and its count. Both came off the screen on 2026-09-07: the scope
+   setting (/ajustes) keeps limpieza, menaje and higiene out of the queue
+   by family, which is the job the gate existed to do by hand. */
+.mapeo__deshacer{display:inline-block;margin-left:8px;vertical-align:middle}
+/* One product, full width, with the evidence above the decision. */
+.triage .mapeo__form{padding-top:4px}
+/* The simulador's own controls. The banner is upstream's amber alert box
+   (`.sim`, above): the whole risk of this mode is forgetting you are in
+   it, so it has to be unmistakable at a glance and it is not decoration.
+
+   «Recalcular» is redundant while htmx is running — every input posts on
+   its own — and is the ONLY way to recompute without it, so it is shown
+   exactly when it is needed, the same trick `.step__ok` uses. */
+.sim__aplicar{display:none;margin-top:10px}
+.sin-js .sim__aplicar{display:flex}
+.sim .lineas{border-top:1px solid var(--amber);margin-top:10px}
+.sim .lineas__head,.sim .linea{border-bottom-color:#e6d9bd}
+.sim .linea__cant{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+
+/* ── búsqueda global (§3.8) ───────────────────────────────────────────── */
+/* Upstream's `.sheet` supplies the box, the backdrop and the shadow (a
+   dialog floats, so it gets one — D46). These only shape what is inside. */
+.buscador{width:min(560px,calc(100vw - 32px))}
+.buscador .sheet__head{gap:10px;align-items:center;padding:14px 18px}
+.buscador .sheet__head .ico{color:var(--muted);flex:0 0 auto}
+.buscador__q{border:0;padding:4px 0;font-size:16px}
+.buscador__q:focus{box-shadow:none;border-color:transparent}
+.buscador .sheet__body{padding:8px}
+
+.hits{list-style:none;margin:0;padding:0}
+.hit{
+  display:flex;align-items:baseline;gap:10px;
+  padding:9px 10px;border-radius:var(--r);
+  color:var(--ink);min-height:var(--tap);
+}
+.hit:hover,.hit:focus-visible{background:var(--paper);text-decoration:none}
+/* The first result is what Enter follows, so it has to look like it. */
+#hit-primero{background:var(--teal-soft)}
+#hit-primero .hit__n{color:var(--teal)}
+.hit__n{flex:1;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit__t{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);flex:0 0 auto}
+.hit__d{font-size:11.5px;color:var(--muted);flex:0 0 auto}
+
+/* ── el primer arranque (§3.10) ───────────────────────────────────────── */
+.arranque{border-color:var(--teal)}
+.pasos{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.paso{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:11px 12px;border-radius:var(--r);
+}
+.paso:hover{background:#fafbfa}
+.paso__marca{
+  display:flex;align-items:center;justify-content:center;
+  width:22px;height:22px;flex:0 0 22px;border-radius:50%;
+  border:1px solid var(--line);background:var(--surface);
+  font-size:11.5px;font-weight:600;color:var(--muted);
+}
+.paso--hecho .paso__marca{background:var(--teal);border-color:var(--teal);color:#fff}
+.paso__cuerpo{flex:1;min-width:0}
+.paso__t{display:block;font-weight:500;line-height:1.35}
+.paso--hecho .paso__t{color:var(--muted)}
+.paso__d{display:block;font-size:12px;color:var(--muted);margin-top:2px;line-height:1.45}
+.paso--hecho .paso__d{display:none}
+
+/* ── mapeo: los parecidos ─────────────────────────────────────────────── */
+
+/* A look-alike is one compact row, and it took four lines to say so.
+   These lived inside a `.field` wrapper, where `.field label{display:block}`
+   (0,1,1) beat `.parecido{display:flex}` (0,1,0) and stacked every row into
+   checkbox, description, meta and factor -- four of them filled the screen
+   on a card whose whole point is deciding ONE product at a time. Same
+   specificity trap as `.check`, second occurrence; the wrapper is a plain
+   block now, since this is a list of rows and not a form field. */
+.parecidos{margin-top:14px}
+.parecidos__t{margin:0 0 3px;font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.parecidos__n{margin:0 0 8px}
+/* As many per row as the width honestly fits, and no hardcoded N. A
+   look-alike group is often four or five products, and five full-width
+   rows pushed the decision below the fold on the one card whose whole job
+   is deciding a single product.
+
+   `auto-fit`, not `auto-fill`: with two look-alikes on a wide screen
+   auto-fill would hold three narrow tracks and leave the third empty,
+   which wraps the meta line for no reason. auto-fit collapses the empty
+   tracks, so two products get the width of two and read on one line. */
+.parecidos__l{
+  display:grid;gap:6px;
+  grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
+}
+.parecido{
+  display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+  padding:7px 11px;border:1px solid var(--line);border-radius:var(--r);
+  min-height:var(--tap);
+}
+.parecido:hover{background:var(--paper)}
+.parecido:has(input:checked){border-color:var(--teal);background:var(--teal-soft)}
+/* The text block is the tick target -- the whole row minus the factor cell,
+   which is why the row itself is not a label (a label around everything
+   would make the «Factor» caption toggle the checkbox). */
+.parecido__b{display:block;flex:1 1 180px;min-width:0;margin-bottom:0;cursor:pointer}
+.parecido__d{display:block;font-size:13px;font-weight:500;line-height:1.35}
+.parecido__m{display:block;font-size:11.5px;color:var(--muted);margin-top:1px;line-height:1.35}
+/* An unlabelled box beside a product name is read as whatever the reader
+   expects -- a price as readily as a factor. The caption is a real
+   `<label for>` and not a placeholder, because a placeholder disappears at
+   exactly the moment there is a value worth questioning. */
+/* `margin-left:auto` so the factor sits at the cell's right edge on the
+   line it shares with the text, and wraps under it -- still on the right --
+   when the column is too narrow for both. */
+.parecido__f{flex:0 0 auto;margin-left:auto;display:flex;align-items:center;gap:7px}
+.parecido__fk{margin:0;font-size:11.5px;font-weight:400;color:var(--muted);cursor:pointer}
+.parecido__f .input-sm{width:88px}

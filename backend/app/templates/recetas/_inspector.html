@@ -1,0 +1,82 @@
+{% from "_icons.html" import icon %}
+{#- «¿Por qué este costo?», beside the line instead of a page away.
+
+    The explanation is not computed here and is not a second opinion: it is
+    `insumo_costs.explicar`, the very object `/insumos/{id}` renders. All
+    this pane does is put it next to the recipe being built, so asking
+    why an ingredient is expensive stops being a trip out of the builder
+    and back (DESIGN.md §3.1).
+
+    Which line is selected rides in the query string, so selecting one is a
+    plain link: it works with JavaScript off, it is bookmarkable, and the
+    back button closes the pane. Below 1280px this same markup renders as a
+    drawer over the palette (D41) -- no second template, only CSS. -#}
+<aside class="insp card">
+
+  <div class="insp__head">
+    <div>
+      <p class="insp__k">Línea seleccionada</p>
+      <h2 class="card__h">{{ sel_insumo.nombre }}</h2>
+      <p class="card__s">
+        Insumo{% if sel_insumo.categoria_slug %} · {{ categoria_nombre(request, sel_insumo.categoria_slug) }}{% endif %}
+      </p>
+    </div>
+    {#- Closing is navigating back to the receta without a `linea`, which
+        is why it is an <a> and not a button: nothing to undo, nothing to
+        post, and it works with no JavaScript at all. -#}
+    <a class="btn btn--ghost btn--icon" href="/recetas/{{ receta.id }}"
+       title="Cerrar" aria-label="Cerrar el panel">{{ icon('x') }}</a>
+  </div>
+
+  {% if explicacion.costo.valor is not none %}
+    <span class="insp__cifra">{{ explicacion.costo.valor | money }}</span>
+    <span class="insp__unidad">
+      por {{ sel_insumo.unidad_base }}{% if explicacion.merma_pct %}, ya con la merma aplicada{% endif %}
+    </span>
+
+    {% if explicacion.costo.precio_viejo %}
+    <p class="flash flash--warn">
+      No hay compras dentro de la ventana. Se está usando la más reciente
+      que hay, de hace {{ explicacion.costo.antiguedad_dias }} días — puede
+      que este insumo ya no se compre.
+    </p>
+    {% endif %}
+
+    <table class="insp__tabla">
+      <tbody>
+        <tr><td>Método</td><td>{{ METODO_LABELS.get(explicacion.metodo, explicacion.metodo) }}</td></tr>
+        <tr><td>Ventana</td><td class="tnum">{{ explicacion.ventana_dias }} días</td></tr>
+        <tr>
+          <td>Observaciones</td>
+          <td class="tnum">{{ explicacion.costo.observaciones_usadas }} de {{ explicacion.observaciones | length }}</td>
+        </tr>
+        <tr><td>Fuentes</td><td class="tnum">{{ explicacion.fuentes | length }}</td></tr>
+        <tr><td>Merma aplicada</td><td class="tnum">{{ explicacion.merma_pct | pct }}</td></tr>
+      </tbody>
+    </table>
+  {% else %}
+    {#- D10 all the way into this pane: no usable price is NO number, never
+        ₡0. The panel's job here is to say which of the three reasons it
+        is, because they send the operator to three different places. -#}
+    <p class="empty">Este insumo todavía no tiene costo.</p>
+    <p class="empty__hint">
+      {% if not explicacion.fuentes %}No tiene ningún producto asociado — se arregla en <a href="/insumos/mapeo">Mapeo</a>.
+      {% elif explicacion.fuentes_sin_factor %}Sus fuentes no tienen factor de conversión, así que no se puede saber cuánto vale una unidad base.
+      {% else %}Sus fuentes no tienen compras con precio en colones.{% endif %}
+    </p>
+  {% endif %}
+
+  {#- The exclusions are reported, never silently applied: an insumo that
+      costs less than it should because half its sources were skipped is
+      exactly what this panel exists to reveal. -#}
+  {% if explicacion.hay_advertencias %}
+  <ul class="c-muted small insp__avisos">
+    {% if explicacion.fuentes_sin_factor %}<li>{{ explicacion.fuentes_sin_factor }} fuente(s) sin factor de conversión, excluidas del cálculo.</li>{% endif %}
+    {% if explicacion.descartadas_sin_tipo_cambio %}<li>{{ explicacion.descartadas_sin_tipo_cambio }} compra(s) en dólares sin tipo de cambio del día, descartadas.</li>{% endif %}
+  </ul>
+  {% endif %}
+
+  <p class="insp__pie">
+    <a href="/insumos/{{ sel_insumo.id }}">Ver el insumo completo</a>
+  </p>
+</aside>

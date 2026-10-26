@@ -1,0 +1,72 @@
+{#- The polled body. Two call sites, exactly as upstream's
+    `_recategorizar_estado.html`: the modal (`poll_target='modal'`, which
+    turns on «Cerrar») and a plain reload of /ajustes while a pass happens
+    to be running, where there is no <dialog> to close. -#}
+{% set in_modal = poll_target == 'modal' %}
+{% set target_sel = '#agrupar-modal-body' if in_modal else '#agrupar-estado' %}
+{% if estado.running %}
+  <div class="haci__card haci__card--loading">
+    {% if estado.total %}
+      {% set pct = (estado.procesados / estado.total * 100) %}
+      {% set circunferencia = 100.53 %}
+      <div class="spinner-ring" role="progressbar" aria-valuenow="{{ pct | round(0) | int }}"
+           aria-valuemin="0" aria-valuemax="100">
+        <svg viewBox="0 0 36 36">
+          <circle class="spinner-ring__track" cx="18" cy="18" r="16"></circle>
+          <circle class="spinner-ring__bar" cx="18" cy="18" r="16"
+                  stroke-dasharray="{{ circunferencia }}"
+                  stroke-dashoffset="{{ (circunferencia * (1 - pct / 100)) | round(2) }}"></circle>
+        </svg>
+        <span class="spinner-ring__pct">{{ pct | round(0) | int }}%</span>
+      </div>
+    {% else %}
+      <div class="spinner-dots" role="status" aria-label="Agrupando"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    {% endif %}
+    <p class="haci__sub">
+      {% if estado.total %}{{ estado.procesados }} de {{ estado.total }} productos.{% endif %}
+      Es una consulta por producto, así que tarda varios minutos — esto se
+      actualiza solo, no hace falta recargar. Lo que ya resolvió queda
+      guardado aunque se cierre.
+    </p>
+  </div>
+  <div hx-get="/ajustes/agrupar/estado{{ '?target=modal' if in_modal else '' }}"
+       hx-trigger="load delay:3s" hx-target="{{ target_sel }}" hx-swap="innerHTML"></div>
+{% elif estado.error %}
+  <div class="haci__card haci__card--warn">
+    <p class="haci__msg">{{ estado.error }}</p>
+  </div>
+  {% if in_modal %}
+    <div class="actions" style="justify-content:flex-end">
+      <button type="button" class="btn btn--solid" onclick="this.closest('dialog').close()">Cerrar</button>
+    </div>
+  {% endif %}
+{% elif estado.finished_at %}
+  <div class="detail-group">
+    <h3 class="detail-group__h">Productos agrupados <span class="detail-group__count">{{ estado.procesados }}</span></h3>
+  </div>
+  <div class="detail-group">
+    <h3 class="detail-group__h">Parecidos encontrados <span class="detail-group__count">{{ estado.pares }}</span></h3>
+  </div>
+  {% if estado.fallidos %}
+  <p class="c-muted small">
+    {{ estado.fallidos }} no se pudieron consultar y quedaron sin agrupar.
+    Se reintentan solos; mientras tanto esas fichas calculan el parecido en
+    el momento.
+  </p>
+  {% endif %}
+  {% if in_modal %}
+    <div class="actions" style="justify-content:flex-end">
+      <button type="button" class="btn btn--solid" onclick="this.closest('dialog').close()">Cerrar</button>
+    </div>
+  {% endif %}
+{% else %}
+  {#- Idle and never run: pressing «Agrupar» with nothing to do, or a
+      refused start. Without this branch the dialog opens empty, which
+      reads as broken rather than as "nothing to do". -#}
+  <p class="c-muted">No hay productos pendientes de agrupar.</p>
+  {% if in_modal %}
+    <div class="actions" style="justify-content:flex-end">
+      <button type="button" class="btn btn--solid" onclick="this.closest('dialog').close()">Cerrar</button>
+    </div>
+  {% endif %}
+{% endif %}

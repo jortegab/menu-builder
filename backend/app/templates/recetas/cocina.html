@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set es_plato = receta.tipo == 'plato' %}
+{% set seccion = 'recetas' if es_plato else 'preparaciones' %}
+{% block title %}{{ receta.nombre }} · Cocina{% endblock %}
+{% block heading %}{{ receta.nombre }}{% endblock %}
+{% block subheading %}
+<p class="head__sub">
+  {% if es_plato %}
+    Rinde {{ receta.porciones }} porci{{ 'ón' if receta.porciones == 1 else 'ones' }}
+  {% else %}
+    Rinde {{ receta.rendimiento_cantidad | cantidad }}
+    {{ UNIDAD_NOMBRES.get(receta.rendimiento_unidad, receta.rendimiento_unidad) }}
+  {% endif %}
+</p>
+{% endblock %}
+{% block acciones %}
+<a class="btn btn--ghost" href="/recetas/{{ receta.id }}">{{ icon('chevron-left') }} Volver al costeo</a>
+{% endblock %}
+{% block content %}
+
+{#- La vista de cocina (§3.11, D43): the recipe at arm's length, on a
+    tablet propped up by the pass rather than a laptop on the office desk.
+
+    **No costs and no controls, and neither is an oversight.** A cook does
+    not need the plate's food cost, and a tablet on a pass is the least
+    private screen in the building — so the number is not merely hidden
+    here, it was never fetched: `recetas.arbol_cocina` has no cost field to
+    print. It also removes every accidental-edit risk from the one surface
+    where hands are wet and busy.
+
+    The quantity is the largest thing on each line and sits in its own
+    right-aligned column, so the list scans as a column of numbers. -#}
+<div class="cocina">
+
+  {% if nodos %}
+  {% for n in nodos %}
+  <div class="cocina__linea">
+    <span class="cocina__cant">
+      {{ n.cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(n.unidad, n.unidad) }}
+    </span>
+    <span class="cocina__nom">{{ n.nombre }}</span>
+  </div>
+
+  {#- Preparaciones expand inline, because "what goes in the salsa" is the
+      question actually asked at the stove — not one that should cost a
+      trip to another screen with wet hands. -#}
+  {% if n.hijos %}
+  <div class="cocina__sub">
+    {% for h in n.hijos %}
+    <div class="cocina__linea">
+      <span class="cocina__cant">
+        {{ h.cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(h.unidad, h.unidad) }}
+      </span>
+      <span class="cocina__nom">{{ h.nombre }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+  {% else %}
+  <p class="empty">Esta receta todavía no tiene ingredientes.</p>
+  {% endif %}
+
+  {#- The notas are a first-class block here, not a card at the foot of a
+      costing screen. In this mode they are half the point. -#}
+  {% if receta.notas_produccion %}
+  <div class="cocina__notas">
+    <p class="hr-label"><span class="hr-label__caps">Cómo se hace</span></p>
+    {{ receta.notas_produccion }}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

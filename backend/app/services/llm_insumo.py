@@ -17,12 +17,12 @@ Called through `httpx` directly rather than the `anthropic` SDK, the same
 way upstream calls Hacienda, the BCCR rate and its own categorizer -- this
 adds no dependency for one endpoint.
 
-**The answer is validated against the list we offered, never trusted raw.**
-A model that returns a slug we did not offer, a unit that is not a unit, or
-prose instead of a line is treated as no answer at all. And even a perfect
-answer is only a *suggestion*: it lands as `status='suggested'` and waits
-for a person (non-negotiable #4). `mapping_confidence` orders the queue; it
-is never a threshold that auto-confirms.
+**The answer is validated against the offered list, never trusted raw.**
+A model that returns a slug that was never offered, a unit that is not a
+unit, or prose instead of a line is treated as no answer at all. And even
+a perfect answer is only a *suggestion*: it lands as `status='suggested'`
+and waits for a person (non-negotiable #4). `mapping_confidence` orders
+the queue; it is never a threshold that auto-confirms.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def _parse_answer(
 
     Every branch that returns None is a case where trusting the output would
     put an invented value into a cost. There is no partial credit here: a
-    line we cannot fully understand is discarded and the deterministic
+    line that cannot be fully understood is discarded and the deterministic
     matcher answers instead.
     """
     partes = [p.strip() for p in (text or "").strip().splitlines()[0].split("|")]
@@ -79,7 +79,7 @@ def _parse_answer(
             return None
         destino = f"nuevo:{nombre}"
     elif destino not in slugs_ofrecidos:
-        # A slug we never offered. Upstream's rule, verbatim: never trust
+        # A slug that was never offered. Upstream's rule, verbatim: never trust
         # free-form model output as an identifier.
         return None
 
@@ -159,3 +159,135 @@ def disponible() -> bool:
     or from string similarity.
     """
     return bool(settings.anthropic_api_key)
+
+
+# The grouping prompt is a *different question* from the suggestion one and
+# has its own system prompt for that reason: `sugerir` picks one destination
+# out of a short list of insumos the operator already created, while this
+# reads a long list of raw supplier descriptions and asks which of them name
+# the same thing. Same model, same transport, different judgement.
+_SYSTEM_PROMPT_GRUPO = (
+    "Sos un asistente de cocina que revisa facturas de un restaurante en "
+    "Costa Rica. Te doy un producto y una lista numerada de otros productos "
+    "del catálogo. Decís cuáles de la lista son EL MISMO INSUMO que el "
+    "producto dado.\n\n"
+    "El mismo insumo puede venir con otra marca, otro proveedor, otro "
+    "tamaño de paquete o escrito distinto: 'QUESO MOZZARELLA LEPRINO 1/15 "
+    "LB' y 'QUESO MOZZARELLA LEPRINO 1/2,27 KG' son el mismo insumo, y "
+    "'AZUCAR BLANCO DONA MARIA' y 'AZUCAR BLANCO DOÑA MARIA' también.\n\n"
+    "NO son el mismo insumo si difieren en algo que cambie el rendimiento o "
+    "el precio por gramo: 'PECHUGA CON HUESO' y 'PECHUGA DESHUESADA' son "
+    "DISTINTOS. Tampoco agrupes cosas que solo comparten un adjetivo: "
+    "'PEPINOS GRANDE' y 'ZUQUINI (GRANDE)' son DISTINTOS.\n\n"
+    "Respondés UNICAMENTE con una línea por coincidencia, así:\n"
+    "  <numero>|<seguro|posible>\n"
+    "Usá 'seguro' solo cuando no te quede duda; 'posible' si es probable "
+    "pero alguien debería revisarlo.\n"
+    "Si ninguno de la lista es el mismo insumo, respondés exactamente: -\n"
+    "Sin explicación, sin texto extra."
+)
+
+# A bound on the prompt, not on the answer. The pending list is a few
+# hundred rows on the live catalog and every one of them is a candidate, so
+# this only bites on a catalog much larger than the real one -- and when it
+# does, the most-bought products are the ones worth de-duplicating first.
+_MAX_CANDIDATOS = 400
+
+
+def _parse_grupo(text: str, total: int) -> dict[int, str] | None:
+    """The model's lines as {index: "seguro"|"posible"}, or None.
+
+    `None` and `{}` mean different things and the caller depends on it:
+    `{}` is the model saying "none of these", a real answer, while `None`
+    is no usable answer at all and sends the caller to `similitud`. A bare
+    "-" is therefore the required way to say "none" -- without it, garbage
+    and genuine emptiness would be the same reply.
+    """
+    limpio = (text or "").strip()
+    if not limpio:
+        return None
+    if limpio == "-":
+        return {}
+
+    salida: dict[int, str] = {}
+    for linea in limpio.splitlines():
+        partes = [p.strip().lower() for p in linea.split("|")]
+        if len(partes) != 2:
+            continue
+        crudo, certeza = partes
+        if certeza not in ("seguro", "posible"):
+            continue
+        try:
+            indice = int(crudo)
+        except ValueError:
+            continue
+        # 1-based in the prompt, and an index outside the list is the same
+        # class of error as a slug that was never offered: invented, so
+        # dropped rather than resolved to whatever it happens to hit.
+        if 1 <= indice <= total:
+            salida[indice - 1] = certeza
+
+    return salida or None
+
+
+def agrupar(descripcion: str, candidatos: list[tuple[int, str]]) -> dict[int, str] | None:
+    """Which of `candidatos` name the same insumo as `descripcion`.
+
+    `candidatos` is [(id, description)]. Returns {id: "seguro"|"posible"}
+    for the matches, `{}` when the model says none match, or None when it
+    could not be reached or did not answer usably -- which is the caller's
+    signal to fall back to `insumo_match.similitud`. **Never raises.**
+
+    The ids are never sent to the model and never parsed back out of its
+    reply: the prompt is a numbered list and the answer is positions in it,
+    so the worst a malformed reply can do is name a row that does not
+    exist, which is dropped. An id cannot be invented.
+    """
+    if not settings.anthropic_api_key or not candidatos:
+        return None
+
+    recortado = candidatos[:_MAX_CANDIDATOS]
+    listado = "\n".join(f"{i}. {desc}" for i, (_, desc) in enumerate(recortado, start=1))
+    mensaje = (
+        f'Producto: "{descripcion.strip()}"\n\n'
+        f"Lista:\n{listado}\n\nRespuesta:"
+    )
+
+    try:
+        with httpx.Client(timeout=settings.anthropic_timeout_seconds) as client:
+            resp = client.post(
+                _API_URL,
+                headers={
+                    "x-api-key": settings.anthropic_api_key,
+                    "anthropic-version": _ANTHROPIC_VERSION,
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": settings.anthropic_model,
+                    "max_tokens": 400,
+                    "temperature": 0,
+                    "system": _SYSTEM_PROMPT_GRUPO,
+                    "messages": [{"role": "user", "content": mensaje}],
+                },
+            )
+    except httpx.HTTPError as exc:
+        log.warning("Agrupación por LLM no respondió para %r: %s", descripcion, exc)
+        return None
+
+    if resp.status_code != 200:
+        log.warning("Agrupación por LLM devolvió %s para %r", resp.status_code, descripcion)
+        return None
+
+    try:
+        payload = resp.json()
+        bloques = payload.get("content") or []
+        texto = "".join(b.get("text", "") for b in bloques if isinstance(b, dict)).strip()
+    except (ValueError, AttributeError) as exc:
+        log.warning("Respuesta del LLM con forma inesperada: %s", exc)
+        return None
+
+    posiciones = _parse_grupo(texto, len(recortado))
+    if posiciones is None:
+        return None
+    return {recortado[i][0]: certeza for i, certeza in posiciones.items()}
+

@@ -253,8 +253,9 @@ def categorias_disponibles(db: Session) -> list[str]:
     """Category slugs actually present in the mirrored catalog.
 
     Read from the mirror rather than hardcoded so this app never carries a
-    second copy of upstream's taxonomy -- which just changed underneath us
-    (alimentos_* became insumos_*) and would have gone stale immediately.
+    second copy of upstream's taxonomy -- which has now changed twice
+    (alimentos_* became insumos_* on 2026-09-02, and back again on
+    2026-09-06) and would have gone stale both times.
     """
     return [
         slug

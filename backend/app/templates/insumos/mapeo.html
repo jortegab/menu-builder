@@ -1,123 +1,712 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% set seccion = 'mapeo' %}
 {% block title %}Mapeo · Menu Builder{% endblock %}
 {% block heading %}Mapeo de productos{% endblock %}
+{% block subheading %}
+{#- **Rows are the wrong denominator here.** «0 de 1 435» is what this
+    screen used to lead with, and it reads as hopeless — it is also the
+    number that matters least. Purchases are steeply concentrated: on the
+    live catalog the busiest 50 products are half of all purchase lines and
+    the busiest 100 are three quarters. So the headline is how much of the
+    kitchen's actual buying is already costed, which is the only figure
+    that can tell the operator when to stop. -#}
+<p class="head__sub">
+  Ya se cubre el <strong>{{ cobertura.pct }}%</strong> de las compras
+  con {{ resumen.mapeados }} producto{{ 's' if resumen.mapeados != 1 }} mapeado{{ 's' if resumen.mapeados != 1 }}
+  · {{ resumen.descartados }} descartado{{ 's' if resumen.descartados != 1 }}
+  · {{ resumen.pendientes }} sin decidir
+</p>
+{% endblock %}
 {% block content %}
 
-<div class="card">
-  <p class="muted">
-    Cada fila es un producto del catálogo que todavía no es ningún insumo.
-    Confirmá a cuál pertenece — o creá uno nuevo. <strong>Nada se activa
-    solo:</strong> hasta que alguien confirma, ese producto no le pone
-    precio a ninguna receta.
-  </p>
-  <div class="kpis">
-    <div class="kpi"><div class="kpi__label">Mapeados</div><div class="kpi__value">{{ resumen.mapeados }}</div></div>
-    <div class="kpi"><div class="kpi__label">Sin mapear</div><div class="kpi__value">{{ resumen.pendientes }}</div></div>
-    <div class="kpi"><div class="kpi__label">En esta cola</div><div class="kpi__value">{{ resumen.en_cola }}</div></div>
-    <div class="kpi">
-      <div class="kpi__label">Sugerencias</div>
-      <div class="kpi__value kpi__value--sm">{{ 'Claude' if resumen.llm else 'Por parecido de texto' }}</div>
-    </div>
-  </div>
-  {% if not resumen.llm %}
-  <p class="muted small">
-    No hay llave de API configurada, así que las sugerencias salen de
-    comparar texto: más toscas, pero la cola funciona igual y no cuesta
-    nada. Se puede mapear todo a mano sin problema.
-  </p>
-  {% endif %}
+{#- One place that mirrors the current filters into a POST body. A form
+    that forgets one acts on a *wider* set than the operator was shown --
+    which on «descartar 403» is the worst bug this screen has.
 
-  <form class="toolbar__filters" method="get" action="/insumos/mapeo">
-    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Buscar producto…">
-    <label class="check"><input type="checkbox" name="comida" value="1" {% if comida == '1' %}checked{% endif %} onchange="this.form.submit()"> Solo comida</label>
-    <label class="check"><input type="checkbox" name="reciente" value="1" {% if reciente == '1' %}checked{% endif %} onchange="this.form.submit()"> Comprado en 180 días</label>
-    <button class="btn btn--ghost" type="submit">Filtrar</button>
+    The scope (familias, días) is deliberately NOT in here. It is app
+    policy read from `app_setting` on the server, so it cannot be widened
+    by anything the browser sends -- which is most of why it moved. -#}
+{% macro filtros_ocultos() %}
+    <input type="hidden" name="q" value="{{ q }}">
+    {% for slug in cat %}<input type="hidden" name="cat" value="{{ slug }}">{% endfor %}
+{%- endmacro %}
+
+{#- The queue's own URL, with every filter on it and none of them raw: a
+    search for «arroz & frijol» would otherwise end the query string at the
+    ampersand and drop the rest. -#}
+{% set base_cola = '/insumos/mapeo?q=' ~ (q | urlencode) %}
+{% macro url_cola(slugs, desde=None) %}{{ base_cola }}{% for s2 in slugs %}&cat={{ s2 | urlencode }}{% endfor %}{% if desde is not none %}&desde={{ desde }}{% endif %}{% endmacro %}
+
+{% if descartados %}
+<div class="flash flash--warn">
+  Se descartaron <strong>{{ descartados }}</strong> productos: no son insumos
+  y no vuelven a aparecer en la cola.
+  <form method="post" action="/insumos/mapeo/deshacer" class="mapeo__deshacer">
+    <input type="hidden" name="lote" value="{{ lote }}">
+    {{ filtros_ocultos() }}
+    <button class="btn btn--ghost btn--xs" type="submit">Deshacer</button>
   </form>
 </div>
+{% endif %}
 
-{% for s in sugerencias %}
-<div class="card mapeo">
-  <div class="mapeo__head">
-    <div>
-      <strong>{{ s.producto.description }}</strong>
-      <div class="muted small">
-        {{ s.producto.supplier_nombre }}
-        {% if s.producto.categoria_slug %} · {{ s.producto.categoria_slug }}{% endif %}
-        · {{ s.compras }} compra(s)
-        {% if s.producto.unidad_medida %} · unidad en factura: {{ s.producto.unidad_medida }}{% endif %}
+{#- **Not a card.** «Qué se está revisando» was a titled panel with an icon
+    and a border around two controls nobody needs a heading to understand.
+    A card earns its chrome by grouping things that belong together and
+    saying what they are; this one wrapped a search box. What is left is the
+    bar itself and one line saying what the queue is scoped to.
+
+    **Filtering is live.** «Filtrar» was a second step for a decision the
+    operator had already made by typing, and on a 1 435-row queue they make
+    it a lot. The button is still in the markup and still works -- it is
+    shown only on the no-JS path, the same `.sin-js` trick the simulador's
+    «Recalcular» uses.
+
+    **`hx-select` and no second template.** The response is this same page,
+    rendered by the same route, with `#cola` picked out of it -- so a live
+    filter cannot compute a different queue from the one a full page load
+    shows. Same reason `_cuerpo.html` is one fragment in two places (D16). -#}
+<form class="cribar" method="get" action="/insumos/mapeo"
+      hx-get="/insumos/mapeo"
+      {#- **500ms, and the delay is a cost setting rather than a latency
+          one.** Every render of this screen computes one suggestion, which
+          with a key configured is one billed call to Claude -- so a request
+          per keystroke is a bill per keystroke. `delay:` restarts on each
+          event, so a typed word costs one call; the number is set for the
+          hunt-and-peck typist, who at 300ms was paying per character.
+          `hx-sync` drops whatever is still in flight when a newer keystroke
+          supersedes it.
+
+          No `changed` modifier, and that is not an oversight: `changed`
+          compares the value of the element the trigger is ATTACHED to,
+          which here is the <form> -- and a form has no value, so the filter
+          never passed and typing fired nothing at all. -#}
+      hx-trigger="submit, input delay:500ms from:.cribar__q, change from:.msel__panel input[type=checkbox]"
+      hx-target="#cola" hx-select="#cola" hx-swap="outerHTML"
+      hx-push-url="true" hx-sync="this:replace">
+  <div class="cribar__b">
+    {#- The id is what lets htmx put the cursor back after a swap: it
+        restores focus and selection by id, and without one a three-letter
+        search loses the caret at the first pause. Same reason the builder's
+        quantity inputs carry theirs. -#}
+    <input class="cribar__q" id="cribar-q" type="search" name="q" value="{{ q }}"
+           placeholder="Buscar producto…" autocomplete="off">
+
+    {#- `.msel` is upstream's own multiselect, ported class for class: a
+        control that renders each pick as a chip inside itself and drops that
+        row from the list below, so the list only ever offers what is not
+        picked yet. -#}
+    <div class="msel cribar__cat" data-msel data-msel-placeholder="Todas las categorías">
+      <div class="msel__control" tabindex="0" role="button" aria-haspopup="listbox">
+        <span class="msel__chips" data-msel-chips></span>
+        <span class="msel__caret" aria-hidden="true">&#9662;</span>
+      </div>
+      {#- The real checkboxes are what the form submits (`cat` repeated).
+          They are visually hidden by CSS and never `display:none`, so with
+          no JavaScript at all this is still a plain list of checkboxes that
+          works -- and the «Filtrar» button below is what submits it there.
+          The counts come from `facetas_categoria`, which applies the scope
+          but never the category filter itself: a facet that empties the
+          list it was ticked from can never have a second category added. -#}
+      <div class="msel__panel" hidden data-msel-panel role="listbox">
+        {% for f in facetas %}
+        <label class="msel__opt">
+          <input type="checkbox" name="cat" value="{{ f.slug }}" tabindex="-1"
+                 {% if f.slug in cat %}checked{% endif %}>
+          <span data-msel-label>{{ categoria_nombre(request, f.slug) or 'Sin categoría' }}</span>
+          <span class="msel__n">{{ f.n }}</span>
+        </label>
+        {% endfor %}
+        <p class="msel__empty" data-msel-empty hidden>No hay más categorías.</p>
       </div>
     </div>
+
+    <button class="btn btn--ghost cribar__ir" type="submit">Filtrar</button>
+  </div>
+</form>
+
+{#- The scope, stated and not offered. These were two checkboxes here, and a
+    checkbox is a thing you can flip. It is app policy now (`/ajustes`), so
+    this line reports it and links to where it changes. -#}
+<p class="alcance">
+  <span class="alcance__k">Se está revisando</span>
+  {% if alcance.solo_receta %}
+  <span class="pip">Alimentos, bebidas y empaques</span>
+  {% else %}
+  <span class="pip">Todo el catálogo</span>
+  {% endif %}
+  {% if alcance.dias_reciente %}
+  <span class="pip">Últimos {{ alcance.dias_reciente }} días</span>
+  {% else %}
+  <span class="pip">Sin límite de fecha</span>
+  {% endif %}
+  <a class="alcance__a" href="/ajustes">Cambiar en Ajustes</a>
+</p>
+
+{#- The undo for a bulk dismissal. Nothing on this screen dismisses any
+    more -- «Ninguno es insumo» came out with the card -- but rows dismissed
+    before it did are still out of the queue, and the only honest thing to do
+    with an action that can no longer be taken is to leave its undo
+    reachable. It renders only when there is something to bring back. -#}
+{% if resumen.descartados %}
+<form method="post" action="/insumos/mapeo/restaurar" class="mapeo__deshacer">
+  <button class="btn btn--ghost btn--xs" type="submit">
+    Traer de vuelta los {{ resumen.descartados }} descartados
+  </button>
+</form>
+{% endif %}
+
+{#- Upstream's own `.msel` driver, ported (`restaurant-manager`'s
+    base.html). It is a DISPLAY layer over real checkboxes: the <form>
+    submits those, they are visually hidden by CSS and never
+    `display:none`, so with no JavaScript this is a plain list of
+    checkboxes that still works and still submits.
+
+    Two departures from upstream, both because a category here carries a
+    count: the chip label reads `[data-msel-label]` rather than the whole
+    row's text (which would put «Verduras 40» on the chip), and there is
+    no per-instance wiring at all -- everything is delegated from
+    `document`. -#}
+<script>
+(function () {
+  function mselChips(msel) {
+    var chips = msel.querySelector('[data-msel-chips]');
+    if (!chips) return;
+    var boxes = [].slice.call(msel.querySelectorAll('.msel__panel input[type=checkbox]'));
+    var marcados = boxes.filter(function (b) { return b.checked; });
+    chips.innerHTML = '';
+    if (!marcados.length) {
+      var ph = document.createElement('span');
+      ph.className = 'msel__placeholder';
+      ph.textContent = msel.dataset.mselPlaceholder || 'Sin selección';
+      chips.appendChild(ph);
+    } else {
+      marcados.forEach(function (box) {
+        var fila = box.closest('.msel__opt');
+        var etiqueta = fila.querySelector('[data-msel-label]') || fila;
+        var texto = etiqueta.textContent.trim();
+        var chip = document.createElement('span');
+        chip.className = 'msel__chip';
+        var nombre = document.createElement('span');
+        nombre.textContent = texto;
+        var quitar = document.createElement('button');
+        quitar.type = 'button';
+        quitar.className = 'msel__chipx';
+        quitar.setAttribute('aria-label', 'Quitar ' + texto);
+        quitar.textContent = '×';
+        quitar.addEventListener('click', function (e) {
+          e.stopPropagation();
+          box.checked = false;
+          mselChips(msel);
+        });
+        chip.appendChild(nombre);
+        chip.appendChild(quitar);
+        chips.appendChild(chip);
+      });
+    }
+    // Only unpicked rows stay in the list below.
+    boxes.forEach(function (b) { b.closest('.msel__opt').hidden = b.checked; });
+    var vacio = msel.querySelector('[data-msel-empty]');
+    if (vacio) vacio.hidden = marcados.length !== boxes.length;
+  }
+  function mselTodos() { document.querySelectorAll('[data-msel]').forEach(mselChips); }
+  document.addEventListener('DOMContentLoaded', mselTodos);
+  mselTodos();
+
+  document.addEventListener('click', function (e) {
+    var control = e.target.closest('.msel__control');
+    var dentro = e.target.closest('.msel');
+    // A click on a control toggles its own panel; a click anywhere outside
+    // every .msel closes them all; a click INSIDE a panel (picking an
+    // option) leaves it open, which is the whole point of a multiselect.
+    document.querySelectorAll('.msel').forEach(function (msel) {
+      if (control && msel.contains(control)) return;
+      if (!dentro) {
+        msel.classList.remove('is-open');
+        var p = msel.querySelector('.msel__panel');
+        if (p) p.hidden = true;
+      }
+    });
+    if (control) {
+      var msel = control.closest('.msel');
+      var panel = msel.querySelector('.msel__panel');
+      panel.hidden = !panel.hidden;
+      msel.classList.toggle('is-open', !panel.hidden);
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.classList.contains('msel__control') && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      e.target.click();
+    }
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.matches && e.target.matches('.msel__panel input[type=checkbox]')) {
+      mselChips(e.target.closest('[data-msel]'));
+    }
+  });
+})();
+</script>
+
+{#- Everything a filter changes, and nothing it does not. The bar above
+    stays put across a live filter, which is what lets the category panel
+    stay open while several are ticked. -#}
+<div id="cola">
+{% if sugerencia %}
+{% set s = sugerencia %}
+<div class="card triage">
+  <div class="mapeo__prog">
+    <div class="mapeo__pista">
+      {#- The bar tracks purchase coverage, not rows — same reason as the
+          subheading. A bar creeping across 1 435 rows would sit near zero
+          for weeks; this one is already well along after a dozen
+          decisions, which is the truth. -#}
+      <div class="mapeo__hecho" style="width: {{ cobertura.pct }}%"></div>
+    </div>
+    <span class="c-muted small">
+      {{ cobertura.pct }}% de las compras · {{ resumen.pendientes }} sin decidir
+    </span>
+  </div>
+
+  {#- The evidence, laid out. Which rule read the pack size is the reason a
+      suggestion is trustworthy at all, so `factor_origen` is on screen in
+      words and not just as a value in a box. -#}
+  <p class="mapeo__desc">{{ s.producto.description }}</p>
+  {#- One row, one shape: every field is a labelled value (`.meta`,
+      upstream's `invoices/detail.html`), and the *value* is a pill only
+      where the field is a classification.
+
+      That is the distinction the pills carry now that headers say what
+      each one is. Proveedor, compras and última compra are read; categoría,
+      unidad and fuente are the three things worth spotting at a glance
+      across cards, so those three are capsules and nothing else is.
+
+      The category reads as its NAME, never as `alimentos_verduras` -- a
+      slug is an identifier the operator never typed. `pip--faint` marks a
+      classification that classified nothing: «Otros», upstream's catch-all
+      when no rule matched, and `Unid`, which is what 85% of the catalog
+      says in `unidad_medida`. Colour stays informative, so the only
+      coloured pill is the amber one, and it is amber because it is a
+      queue: a product with no suggestion is waiting for a person. -#}
+  <div class="meta">
     <div>
-      {% if s.origen == 'llm' %}<span class="pip">Sugerido por Claude</span>
-      {% elif s.origen == 'similitud' %}<span class="pip">Parecido {{ (s.confianza * 100) | round | int }}%</span>
-      {% else %}<span class="pip pip--warn">Sin sugerencia</span>{% endif %}
+      <span class="meta__k">Proveedor</span>
+      <span class="meta__v">{{ s.producto.supplier_nombre }}</span>
+    </div>
+    <div>
+      <span class="meta__k">Compras</span>
+      <span class="meta__v">{{ s.compras }}</span>
+    </div>
+    {% if s.producto.last_purchase_at %}
+    <div>
+      <span class="meta__k">Última compra</span>
+      <span class="meta__v">{{ s.producto.last_purchase_at.strftime('%d/%m/%Y') }}</span>
+    </div>
+    {% endif %}
+    {% if s.producto.categoria_slug %}
+    <div>
+      <span class="meta__k">Categoría</span>
+      <span class="meta__v">
+        <span class="pip{{ ' pip--faint' if s.producto.categoria_slug in ('otros', 'alimentos') }}">{{ categoria_nombre(request, s.producto.categoria_slug) }}</span>
+      </span>
+    </div>
+    {% endif %}
+    {% if s.producto.unidad_medida %}
+    <div>
+      {#- The unit the *invoice* declared, which is not the insumo's own
+          unidad base (D30) -- the header says which, because on this screen
+          both are on display at once. -#}
+      <span class="meta__k">Unidad en factura</span>
+      <span class="meta__v">
+        <span class="pip{{ ' pip--faint' if s.producto.unidad_medida in ('Unid', 'Otros') }}">{{ s.producto.unidad_medida }}</span>
+      </span>
+    </div>
+    {% endif %}
+    <div>
+      <span class="meta__k">Fuente</span>
+      <span class="meta__v">
+        {% if s.origen == 'llm' %}<span class="pip">Sugerido por Claude</span>
+        {% elif s.origen == 'similitud' %}<span class="pip">Parecido {{ (s.confianza * 100) | round | int }}%</span>
+        {% else %}<span class="pip pip--warn">Sin sugerencia</span>{% endif %}
+      </span>
     </div>
   </div>
 
-  <form class="mapeo__form" method="post" action="/insumos/mapeo/confirmar">
+  {#- Everything above is evidence: what this product is and where the
+      reading came from. Everything below is the decision. They were one
+      undifferentiated column, so the eye had to work out which fields it
+      was being asked to *fill* and which it was only being shown -- and
+      the factor input, the one field on this screen that fails silently,
+      sat in the middle of that with nothing marking it as an input.
+
+      No caption: the break itself is the whole message, and a heading here
+      would name something the fields below already say. `.hr` is
+      `.hr-label`'s line on the same rhythm, minus the label. -#}
+  <hr class="hr">
+
+  {#- **`hx-target`/`hx-swap` are inherited, `hx-post` is not** -- the same
+      split the builder uses. The form must NOT carry `hx-post`: it would
+      make htmx intercept the submit and send «Confirmar» to the cost
+      endpoint instead of writing the mapping.
+
+      Each control that feeds the cost posts for itself. htmx includes the
+      enclosing form on a non-GET, so every field travels with the request
+      whichever one moved. -#}
+  <form class="mapeo__form" method="post" action="/insumos/mapeo/confirmar" id="form-mapeo"
+        hx-target="#costo-preview" hx-swap="outerHTML">
     <input type="hidden" name="catalog_product_id" value="{{ s.producto.id }}">
     <input type="hidden" name="factor_origen" value="{{ s.factor_origen }}">
+    {{ filtros_ocultos() }}
+    {#- The cursor rides with the decision: `confirmar` needs it to work out
+        where the queue lands once this product (and any ticked look-alike)
+        leaves it, and `rechazar` needs it to stay exactly where it is. -#}
+    <input type="hidden" name="desde" value="{{ desde }}">
 
-    {% if s.insumo_id %}
-      <input type="hidden" name="insumo_id" value="{{ s.insumo_id }}">
-      <div class="field field--inline">
-        <label>Insumo</label>
-        <div class="mapeo__destino"><strong>{{ s.insumo_nombre }}</strong></div>
-      </div>
-    {% else %}
-      <div class="field field--inline">
-        <label for="n{{ s.producto.id }}">Insumo nuevo</label>
-        <input class="input" id="n{{ s.producto.id }}" name="nombre_nuevo" value="{{ s.nombre_propuesto or '' }}">
-      </div>
-      <div class="field field--inline">
-        <label for="u{{ s.producto.id }}">Unidad base</label>
-        <select class="input input--sm" id="u{{ s.producto.id }}" name="unidad_base">
-          {% for u in unidades %}
-          <option value="{{ u }}" {% if u == s.unidad_sugerida %}selected{% endif %}>{{ UNIDAD_LABELS.get(u, u) }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    {% endif %}
+    {#- The insumo form's idea at a queue card's density. Every field keeps
+        the SAME icon it has on `/insumos/nuevo` -- `tag`, `scale`,
+        `scissors`, `chart` -- so someone who has filled that form once
+        recognises each one without reading it.
 
-    <div class="field field--inline">
-      <label for="f{{ s.producto.id }}">Factor</label>
-      <input class="input input--sm" id="f{{ s.producto.id }}" name="factor"
-             value="{{ s.factor if s.factor is not none else '' }}" inputmode="decimal"
-             placeholder="cuántas unidades de uso trae">
-      <span class="muted small">
-        {% if s.factor_origen == 'descripcion' %}leído de la descripción
-        {% elif s.factor_origen == 'llm_descripcion' %}leído por Claude
-        {% elif s.factor_origen == 'unidad_medida' %}de la unidad de la factura
-        {% elif s.factor_origen == 'default_categoria' %}por categoría (kg)
-        {% else %}<span class="pip pip--warn">hay que ponerlo a mano</span>{% endif %}
-      </span>
+        **Grouped by what fails together**, which is the form's own rule for
+        what earns a card: unidad base and factor are one statement (the
+        factor says how many `unidad_base` a purchase yields, so it is
+        meaningless without the unit beside it), merma is a second, método a
+        third. The separation is a lined box rather than a card, because a
+        card inside a card is furniture on a screen visited four hundred
+        times -- and for the same reason the form's `<details>` help panels
+        do not come across.
+
+        **`factor_origen` is a pip on the label**, not prose in the hint.
+        Which rule read the pack size is the app-wide "every automatic
+        decision records which rule fired" convention, and it is the thing
+        that makes a suggested factor trustworthy -- so it belongs where the
+        eye lands, beside the field's name, and amber when the answer is
+        "nobody read it, you have to". -#}
+    <div class="campos">
+      {% if s.insumo_id %}
+        <input type="hidden" name="insumo_id" value="{{ s.insumo_id }}">
+        <div class="campos__g campos__g--todo">
+          <div class="field">
+            <label>{{ icon('link', 14) }} Insumo</label>
+            <div class="mapeo__destino">
+              <strong>{{ s.insumo_nombre }}</strong>
+              <span class="pip pip--warn">sin confirmar</span>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        {#- Merma and método are here and not only on the insumo form
+            because this card writes the same row: leaving them out meant
+            every insumo born in the queue started at 0% merma on the global
+            método -- fine for salt, wrong for anything with a bone in it.
+
+            Ventana is deliberately NOT here. It only means anything once a
+            método is chosen, and a queue card is not where someone decides
+            how many days of history to average. -#}
+        <div class="campos__g campos__g--todo">
+          <div class="field{% if errors.nombre %} is-bad{% endif %}">
+            <label for="n{{ s.producto.id }}">{{ icon('tag', 14) }} Nombre del insumo</label>
+            <input id="n{{ s.producto.id }}" name="nombre_nuevo"
+                   placeholder="Pechuga deshuesada"
+                   value="{{ valores.nombre_nuevo if valores.nombre_nuevo is defined else (s.nombre_propuesto or '') }}">
+            {% if errors.nombre %}<p class="field__err">{{ errors.nombre }}</p>{% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="campos__g">
+        <div class="rejilla">
+          {% if not s.insumo_id %}
+          <div class="field{% if errors.unidad_base %} is-bad{% endif %}">
+            <label for="u{{ s.producto.id }}">{{ icon('scale', 14) }} Unidad base</label>
+            {% set u_sel = valores.unidad_base if valores.unidad_base is defined else s.unidad_sugerida %}
+            <select id="u{{ s.producto.id }}" name="unidad_base"
+                    hx-post="/insumos/mapeo/costo">
+              {% for u in unidades %}
+              <option value="{{ u }}" {% if u == u_sel %}selected{% endif %}>{{ UNIDAD_LABELS.get(u, u) }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.unidad_base %}<p class="field__err">{{ errors.unidad_base }}</p>{% endif %}
+          </div>
+          {% endif %}
+
+          <div class="field">
+            <label for="f{{ s.producto.id }}">
+              {{ icon('package', 14) }} Factor
+              {% if s.factor_origen == 'descripcion' %}<span class="pip">de la descripción</span>
+              {% elif s.factor_origen == 'llm_descripcion' %}<span class="pip">leído por Claude</span>
+              {% elif s.factor_origen == 'unidad_medida' %}<span class="pip">de la factura</span>
+              {% elif s.factor_origen == 'default_categoria' %}<span class="pip">por categoría</span>
+              {% else %}<span class="pip pip--warn">a mano</span>{% endif %}
+            </label>
+            {#- `hx-sync` drops an in-flight request when a newer keystroke
+                supersedes it, so typing "1000" settles on one answer
+                instead of racing four. -#}
+            <input id="f{{ s.producto.id }}" name="factor"
+                   value="{{ s.factor if s.factor is not none else '' }}" inputmode="decimal"
+                   placeholder="0"
+                   hx-post="/insumos/mapeo/costo"
+                   hx-trigger="keyup changed delay:300ms, change"
+                   hx-sync="closest form:replace">
+          </div>
+        </div>
+      </div>
+
+      {% if not s.insumo_id %}
+      <div class="campos__g">
+        <div class="field{% if errors.merma_pct %} is-bad{% endif %}">
+          <label for="m{{ s.producto.id }}">{{ icon('scissors', 14) }} Merma</label>
+          <div class="campo-uni">
+            <input id="m{{ s.producto.id }}" name="merma_pct"
+                   value="{{ valores.merma_pct if valores.merma_pct is defined else '' }}"
+                   inputmode="decimal" placeholder="0"
+                   hx-post="/insumos/mapeo/costo"
+                   hx-trigger="keyup changed delay:300ms, change"
+                   hx-sync="closest form:replace">
+            <span class="campo-uni__u">%</span>
+          </div>
+          {% if errors.merma_pct %}<p class="field__err">{{ errors.merma_pct }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div class="campos__g">
+        <div class="rejilla">
+          {#- No «usar el de Ajustes» option. It stored NULL, which means
+              "follow the global default as it changes" -- a real and
+              different thing from picking Mediana, but indistinguishable
+              on screen while the global default IS Mediana. The card now
+              writes an explicit método, so an insumo created here is
+              pinned to it. See the note in DESIGN.md §3.7. -#}
+          <div class="field{% if errors.metodo_costeo %} is-bad{% endif %}">
+            <label for="mc{{ s.producto.id }}">{{ icon('chart', 14) }} Método</label>
+            {% set m_sel = valores.metodo_costeo if valores.metodo_costeo is defined and valores.metodo_costeo else metodo_default %}
+            <select id="mc{{ s.producto.id }}" name="metodo_costeo"
+                    hx-post="/insumos/mapeo/costo">
+              {% for value, label in METODO_LABELS.items() %}
+              <option value="{{ value }}" {% if m_sel == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.metodo_costeo %}<p class="field__err">{{ errors.metodo_costeo }}</p>{% endif %}
+          </div>
+
+          <div class="field field--corto{% if errors.ventana_dias %} is-bad{% endif %}">
+            <label for="v{{ s.producto.id }}">{{ icon('refresh', 14) }} Ventana</label>
+            <div class="campo-uni">
+              <input id="v{{ s.producto.id }}" name="ventana_dias"
+                     value="{{ valores.ventana_dias if valores.ventana_dias is defined else ventana_default }}"
+                     inputmode="numeric" placeholder="{{ ventana_default }}"
+                     hx-post="/insumos/mapeo/costo"
+                     hx-trigger="keyup changed delay:300ms, change"
+                     hx-sync="closest form:replace">
+              <span class="campo-uni__u">días</span>
+            </div>
+            {% if errors.ventana_dias %}<p class="field__err">{{ errors.ventana_dias }}</p>{% endif %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
-    <div class="actions">
-      <button class="btn" type="submit">Confirmar</button>
+    {#- The cost these settings produce, live. It replaced «última compra ÷
+        factor», which was one observation shown only so a factor wrong by
+        a thousand was visible. This runs the real `costing.costo_unitario`
+        over the real price points, so it can say «costo» and mean it --
+        and it still catches the factor error, because ₡3 802 por g for
+        sugar reads as wrong instantly.
+
+        Every input that feeds it re-renders it: a card showing the median
+        while the select says «Máximo» would be a wrong number on screen,
+        which is worse than no card at all. -#}
+    {% include "insumos/_costo.html" %}
+
+
+    {#- **Los parecidos, y por qué son la mitad de esta pantalla.**
+
+        The live catalog is full of the same ingredient written twice:
+        `QUESO MOZZARELLA RALLADO LEPRINO 1/15 LB` and `… 1/2,27 KG` are one
+        insumo in two pack sizes, and `AZUCAR BLANCO DONA MARIA` and
+        `AZUCAR BLANCO DOÑA MARIA` differ by a tilde. Deciding those
+        separately, dozens of cards apart, is exactly how a duplicate
+        insumo gets created — and a duplicate splits one ingredient's price
+        history in half with nothing looking wrong on any screen.
+
+        The grouping is `insumo_match.similitud`, conflict guard included:
+        the same function that refuses to offer «PECHUGA CON HUESO» for
+        «Pechuga deshuesada» is what decides these, so `AZUCAR CRUDO`,
+        `SALSA DE SOYA` and `PAPA GAJO SAZONADA` never show up here at all.
+
+        **Nothing is applied.** A strong reading arrives ticked, a weaker
+        one arrives unticked with its score, and neither is written until a
+        person presses Confirmar (non-negotiable #4). What this removes is
+        the hunting, never the deciding. -#}
+    {% if grupo %}
+    <div class="parecidos">
+      <p class="parecidos__t">También son este insumo</p>
+      <p class="c-muted small parecidos__n">
+        Otros productos sin decidir que parecen lo mismo. Revisá cada uno —
+        cada cual lleva su propio factor, porque son presentaciones
+        distintas del mismo ingrediente.
+      </p>
+      {#- **Not a `<label>` around the whole row, and not inside a `.field`.**
+          Both were wrong, and for related reasons.
+
+          `.field label` is (0,1,1) and beat `.parecido`'s own
+          `display:flex` (0,1,0), so every row rendered as four stacked
+          lines -- checkbox, description, meta, input -- and four look-alikes
+          filled the screen. That is the same specificity trap already
+          documented above `.check`, hit a second time; the wrapper is a
+          plain block now, because this is a list of rows and not a form
+          field.
+
+          And a `<label>` around the whole row would make the «Factor»
+          caption toggle the checkbox. So the row is a plain div holding two
+          labels: the text block points at the checkbox, the caption at that
+          row's own factor. -#}
+      <div class="parecidos__l">
+      {% for p in grupo %}
+      <div class="parecido">
+        <input type="checkbox" id="pt{{ p.producto.id }}" name="tambien" value="{{ p.producto.id }}"
+               {% if p.sugerido %}checked{% endif %}>
+        <label class="parecido__b" for="pt{{ p.producto.id }}">
+          <span class="parecido__d">{{ p.producto.description }}</span>
+          <span class="parecido__m">
+            {{ p.producto.supplier_nombre[:28] }} ·
+            {{ p.compras }} compra{{ 's' if p.compras != 1 }} ·
+            {#- Which proposer read this pair, in words. The score stays on
+                screen either way, so a row Claude proposed can be checked
+                against what the string comparison thought of it. #}
+            {% if p.origen == 'llm' %}leído por Claude{% else %}parecido de texto{% endif %}
+            · {{ (p.score * 100) | round | int }}%
+          </span>
+        </label>
+        {#- The box said nothing about itself: «5000» beside a product name
+            reads as a price as readily as a factor. The caption names it in
+            the same word the field above the cost panel uses, and it is a
+            caption rather than a placeholder -- a placeholder disappears
+            exactly when there is a value worth questioning. -#}
+        <span class="parecido__f">
+          <label class="parecido__fk" for="pf{{ p.producto.id }}">Factor</label>
+          <input class="input-sm" id="pf{{ p.producto.id }}" name="factor-{{ p.producto.id }}"
+                 inputmode="decimal"
+                 aria-label="Factor de {{ p.producto.description }}"
+                 value="{{ factores.get(p.producto.id)[0] | cantidad if factores.get(p.producto.id)[0] is not none else '' }}"
+                 placeholder="0">
+        </span>
+      </div>
+      {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {#- The decision itself, at the end of the card and on the right:
+        every field above it is evidence or setting, and «Confirmar» is the
+        one control that writes. It sits clear of the cost panel rather
+        than against its lower edge, so it does not read as one more of
+        that panel's parts. -#}
+    <div class="actions actions--fin">
+      <button class="btn btn--solid" type="submit">{{ icon('check') }} Confirmar</button>
       {% if s.insumo_id %}
       <button class="btn btn--ghost" type="submit" formaction="/insumos/mapeo/rechazar"
               name="insumo_id" value="{{ s.insumo_id }}">No es ese</button>
       {% endif %}
     </div>
   </form>
+
+  {#- The page strip, in `restaurant-manager`'s shape (`services/pagination.py`,
+      ported): «Anterior», a Google-results run of page numbers that collapses
+      distant ones to an ellipsis, «Siguiente». One product per page, so a page
+      number IS a position in the queue -- which is the thing «Saltar»/«Volver»
+      could never say. Moving 300 rows deep took 300 clicks and told the
+      operator nothing about where they were.
+
+      Plain links, not buttons: this has to work with JavaScript off, and a
+      page number is a place, so it should be bookmarkable and land in
+      history. -#}
+  {% if total_paginas > 1 %}
+  <nav class="pagenav" aria-label="Páginas de la cola">
+    {#- Every filter rides on every page link. Dropping the categories
+        here would widen the queue from the second page on, and the page
+        numbers would stop meaning what the strip says they mean. -#}
+    {% set base = url_cola(cat) %}
+    {% if pagina > 1 %}
+    <a class="btn btn--ghost" id="mapeo-volver" href="{{ base }}&desde={{ desde - 1 }}">‹ Anterior</a>
+    {% else %}
+    <button class="btn btn--ghost" type="button" disabled>‹ Anterior</button>
+    {% endif %}
+    {% for p in ventana %}
+      {% if p is none %}
+        <span class="pagenav__ellipsis">…</span>
+      {% elif p == pagina %}
+        <button class="btn btn--solid" type="button" aria-current="page" disabled>{{ p }}</button>
+      {% else %}
+        <a class="btn btn--ghost" href="{{ base }}&desde={{ p - 1 }}">{{ p }}</a>
+      {% endif %}
+    {% endfor %}
+    {% if pagina < total_paginas %}
+    <a class="btn btn--ghost" id="mapeo-saltar" href="{{ base }}&desde={{ desde + 1 }}">Siguiente ›</a>
+    {% else %}
+    <button class="btn btn--ghost" type="button" disabled>Siguiente ›</button>
+    {% endif %}
+  </nav>
+  {% endif %}
+
 </div>
+
 {% else %}
 <div class="card">
-  <p class="empty">No queda nada por mapear con estos filtros.</p>
+  <p class="empty">No queda nada por decidir con estos filtros.</p>
   <p class="empty__hint">
-    Probá quitando «solo comida» o «comprado en 180 días» para ver el resto
-    del catálogo. Tampoco hace falta mapearlo todo: un insumo solo tiene que
-    existir cuando una receta lo pide.
+    Se puede ampliar lo que entra en la cola desde
+    <a href="/ajustes">Ajustes</a> — ahí se decide si trae solo alimentos,
+    bebidas y empaques, y de cuántos días para acá. Tampoco hace falta
+    mapearlo todo: un insumo solo tiene que existir cuando una receta lo
+    pide.
   </p>
 </div>
-{% endfor %}
+{% endif %}
 
-{% if sugerencias %}
-<p class="muted small">
-  Se muestran hasta {{ por_pagina }} a la vez, los más comprados primero.
-  Confirmá los que veas y la cola se vuelve a llenar sola.
+</div>
+{#- Progressive enhancement, not a dependency: every one of these keys
+    is a control that already exists above and that a click already
+    reaches.
+
+    **Outside `#cola` on purpose.** htmx re-swaps that div on every
+    keystroke of a live filter and executes the <script> tags it finds
+    there, so a copy of this inside it would bind another listener per
+    filter and J would fire once per character ever typed. Everything
+    here is looked up by id at event time, so it never needed to be
+    inside. -#}
+<script>
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    // The filter bar is not the queue. Enter there submits the search,
+    // and without this guard it submitted #form-mapeo instead -- writing a
+    // mapping when the operator meant to filter. J and K would page the
+    // queue out from under a half-typed search for the same reason.
+    if (t && t.closest && t.closest('.cribar')) { return; }
+    var escribiendo = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA');
+    if (e.key === 'Escape' && escribiendo) { t.blur(); return; }
+    if (escribiendo) return;
+    var ir = null;
+    if (e.key === 'j' || e.key === 'J') ir = document.getElementById('mapeo-saltar');
+    if (e.key === 'k' || e.key === 'K') ir = document.getElementById('mapeo-volver');
+    if (ir) { e.preventDefault(); ir.click(); return; }
+    if (e.key === 'Enter') {
+      var f = document.getElementById('form-mapeo');
+      if (f) { e.preventDefault(); f.requestSubmit ? f.requestSubmit() : f.submit(); }
+    }
+  });
+})();
+</script>
+
+
+{% if not resumen.llm %}
+<p class="c-muted small">
+  No hay llave de API configurada, así que las sugerencias salen de comparar
+  texto: más toscas, pero la cola funciona igual y no cuesta nada. Se puede
+  mapear todo a mano sin problema.
 </p>
 {% endif %}
 

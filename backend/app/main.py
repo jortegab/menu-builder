@@ -10,7 +10,6 @@ the UI.
 from __future__ import annotations
 
 import logging
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,26 +17,24 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .db import init_db
-from .routers import ajustes, insumos, mapeo, recetas
+from .routers import ajustes, busqueda, insumos, mapeo, recetas
 from .templating import templates
 
 logging.basicConfig(level=logging.INFO)
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    yield
-
-
-app = FastAPI(title="Menu Builder", lifespan=lifespan)
+# No `lifespan` hook. It existed only to call `db.init_db`, which only ever
+# called `create_all` -- and schema is Alembic's job since 2026-09-07
+# (`alembic upgrade head` runs before uvicorn, see docker-compose.yml).
+# This app has no seed data, so there is nothing left for a startup hook to
+# do; `db.py`'s docstring has the full note.
+app = FastAPI(title="Menu Builder")
 app.mount(
     "/static",
     StaticFiles(directory=str(Path(__file__).parent / "static")),
     name="static",
 )
 app.include_router(ajustes.router)
+app.include_router(busqueda.router)
 # mapeo before insumos: `/insumos/mapeo` would otherwise be captured by
 # `/insumos/{insumo_id}` and 422 on the int conversion, since FastAPI
 # validates the matched route rather than falling through to the next one.

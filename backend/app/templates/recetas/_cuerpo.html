@@ -1,24 +1,29 @@
-{#- The lines of a receta and its totals.
+{% from "_icons.html" import icon %}
+{#- The lines of a receta, its composition bar and its totals.
 
     Rendered both as part of `detail.html` and on its own as the answer to
     every line edit, from the same `_contexto_builder` context. That is D16
     made structural: there is no JSON endpoint and no cost arithmetic in the
     browser, so the total after a drag is computed by exactly the code that
-    computed the one on page load. -#}
-<div class="card builder__cuerpo" id="receta-cuerpo">
+    computed the one on page load.
+
+    Since D39 cost share appears **once**, in the composition bar at the
+    bottom. There is no per-row tint and no `%` column: three renderings of
+    one fact is two too many, and the row wash was the loudest and least
+    precise of the three. The one place a percentage survives is inside a
+    preparación's breakdown, where no bar spans the batch. -#}
+<div class="card builder__plato" id="receta-cuerpo">
 
   {% if error_linea %}
-  <p class="aviso aviso--alert">{{ error_linea }}</p>
+  <p class="flash flash--alert">{{ error_linea }}</p>
   {% endif %}
 
   {% if costeo.error %}
-  <p class="aviso aviso--alert">
-    {{ costeo.error }}
-  </p>
+  <p class="flash flash--alert">{{ costeo.error }}</p>
   {% endif %}
 
   {% if costeo.faltantes %}
-  <div class="aviso aviso--warn">
+  <div class="flash flash--warn">
     <strong>Receta incompleta.</strong>
     Sin precio:
     {%- for f in costeo.faltantes %}
@@ -32,135 +37,164 @@
   {% endif %}
 
   {% if costeo.lineas %}
-  <table class="grid lineas" id="lineas">
-    <thead>
-      <tr>
-        <th class="lineas__asa"></th>
-        <th>Ingrediente</th>
-        <th class="num">Cantidad</th>
-        <th class="num">Costo</th>
-        <th class="num">%</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="lineas-cuerpo">
+  <div class="lineas" id="lineas">
+    <div class="lineas__head">
+      <span class="linea__asa"></span>
+      <span class="linea__nom">Ingrediente</span>
+      <span class="linea__cant">Cantidad</span>
+      <span class="linea__costo">Costo</span>
+      <span class="linea__acc"></span>
+    </div>
+
+    <div id="lineas-cuerpo">
       {% for c in costeo.lineas %}
       {% set fila = filas.get(c.linea.linea_id) %}
       {% if fila %}
-      <tr class="linea{% if c.faltante %} linea--faltante{% endif %}"
-          data-linea-id="{{ fila.id }}" draggable="true">
-        <td class="lineas__asa" aria-hidden="true">⠿</td>
-        <td>
+      <div class="linea{% if c.faltante %} linea--faltante{% endif %}{% if sel and sel.id == fila.id %} is-sel{% endif %}"
+           data-linea-id="{{ fila.id }}">
+
+        <span class="linea__asa" title="Arrastrar para reordenar">{{ icon('grip', 14) }}</span>
+
+        <span class="linea__nom">
+          {#- The swatch ties this row to its segment in the bar below.
+              Keyed on the line id, not the name: a receta may carry the
+              same insumo twice and both would otherwise share a colour. -#}
+          {% set color = colores.get(fila.id) %}
+          {% if color %}<span class="linea__sw" style="background: var({{ color }})"></span>{% endif %}
           {% if fila.tipo_componente == 'insumo' %}
-            <a href="/insumos/{{ fila.insumo_id }}">{{ c.nombre }}</a>
+            <a href="/recetas/{{ receta.id }}?linea={{ fila.id }}">{{ c.nombre }}</a>
           {% else %}
             <a href="/recetas/{{ fila.componente_receta_id }}">{{ c.nombre }}</a>
             <span class="pip">preparación</span>
           {% endif %}
           {% if c.faltante %}<span class="pip pip--warn">sin precio</span>{% endif %}
           {% if c.costo_unitario is not none %}
-          <div class="muted small">
+          <span class="linea__sub">
             {{ c.costo_unitario | money }} por {{ UNIDAD_NOMBRES.get(bases.get(fila.id), bases.get(fila.id, '')) }}
-          </div>
+          </span>
           {% endif %}
-        </td>
-        <td class="num">
-          {#- The quantity edits live. `hx-target`/`hx-swap` sit on the
-              form and are inherited by both inputs; `hx-post` is not
-              inheritable, so each carries its own. The ids are what let
-              htmx put the cursor back where it was after the swap --
-              without them, typing a three-digit quantity would lose focus
-              at the first pause. `hx-sync` drops an in-flight request when
-              a newer keystroke supersedes it. -#}
-          <form class="linea__cantidad" method="post"
-                action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
-                hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
-                hx-target="#receta-cuerpo" hx-swap="outerHTML">
-            <input class="input input--xs" id="cant-{{ fila.id }}" name="cantidad"
-                   value="{{ fila.cantidad | cantidad }}"
-                   inputmode="decimal" aria-label="Cantidad de {{ c.nombre }}"
-                   hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
-                   hx-include="closest form" hx-sync="closest form:replace"
-                   hx-trigger="change, keyup changed delay:600ms">
-            <select class="input input--xs" id="uni-{{ fila.id }}" name="unidad"
-                    aria-label="Unidad de {{ c.nombre }}"
-                    hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
-                    hx-include="closest form" hx-sync="closest form:replace"
-                    hx-trigger="change">
-              {% for u in unidades.get(fila.id, [fila.unidad]) %}
-              <option value="{{ u }}" {% if u == fila.unidad %}selected{% endif %}>{{ UNIDAD_NOMBRES.get(u, u) }}</option>
-              {% endfor %}
-            </select>
-            {#- Redundant when htmx is running and essential when it is
-                not: with JavaScript off this button is the only way the
-                edit reaches the server. -#}
-            <button class="btn btn--ghost btn--xs" type="submit">Aplicar</button>
-          </form>
-        </td>
-        <td class="num">{{ c.costo | money }}</td>
-        <td class="num muted">
-          {% if c.costo is not none and costeo.costo_total and costeo.costo_total > 0 %}
-            {{ (c.costo / costeo.costo_total * 100) | pct }}
-          {% else %}—{% endif %}
-        </td>
+        </span>
+
+        {#- The quantity edits live. `hx-target`/`hx-swap` sit on the form
+            and are inherited; `hx-post` is not inheritable, so the input
+            and the select carry their own. The ids are what let htmx put
+            the cursor back after the swap -- without them, typing a
+            three-digit quantity loses focus at the first pause.
+
+            «Aplicar» is FIRST in the DOM and moved to the end with CSS
+            `order`. A form submitted with Enter uses its first submit
+            button, and if that were `−` then typing a quantity and
+            pressing Enter would silently step it down instead of applying
+            what was typed. -#}
+        <form class="step linea__cant" method="post"
+              action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
+              hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
+              hx-target="#receta-cuerpo" hx-swap="outerHTML">
+          <button class="btn btn--ghost btn--xs step__ok" type="submit">Aplicar</button>
+          <button class="step__b step__b--menos" type="submit" name="paso" value="-1"
+                  aria-label="Bajar la cantidad de {{ c.nombre }}">−</button>
+          <input class="step__v" id="cant-{{ fila.id }}" name="cantidad"
+                 value="{{ fila.cantidad | cantidad }}"
+                 inputmode="decimal" aria-label="Cantidad de {{ c.nombre }}"
+                 hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
+                 hx-include="closest form" hx-sync="closest form:replace"
+                 hx-trigger="change, keyup changed delay:600ms">
+          <button class="step__b step__b--mas" type="submit" name="paso" value="1"
+                  aria-label="Subir la cantidad de {{ c.nombre }}">+</button>
+          <select class="step__u" id="uni-{{ fila.id }}" name="unidad"
+                  aria-label="Unidad de {{ c.nombre }}"
+                  hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}"
+                  hx-include="closest form" hx-sync="closest form:replace"
+                  hx-trigger="change">
+            {% for u in unidades.get(fila.id, [fila.unidad]) %}
+            <option value="{{ u }}" {% if u == fila.unidad %}selected{% endif %}>{{ UNIDAD_NOMBRES.get(u, u) }}</option>
+            {% endfor %}
+          </select>
+        </form>
+
+        <span class="linea__costo">{{ c.costo | money }}</span>
+
         {#- The keyboard path for everything the mouse does by dragging.
             Not a fallback bolted on: `dnd.js` reorders by submitting the
             same route these buttons post to. -#}
-        <td class="lineas__acciones">
+        <span class="linea__acc">
           <form method="post" action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/mover"
                 hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/mover"
                 hx-target="#receta-cuerpo" hx-swap="outerHTML">
             <input type="hidden" name="delta" value="-1">
-            <button class="btn btn--ghost btn--xs" type="submit" title="Subir"
+            <button class="btn btn--ghost btn--icon" type="submit" title="Subir"
                     aria-label="Subir {{ c.nombre }}"
-                    {% if loop.first %}disabled{% endif %}>↑</button>
+                    {% if loop.first %}disabled{% endif %}>{{ icon('chevron-up') }}</button>
           </form>
           <form method="post" action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/mover"
                 hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/mover"
                 hx-target="#receta-cuerpo" hx-swap="outerHTML">
             <input type="hidden" name="delta" value="1">
-            <button class="btn btn--ghost btn--xs" type="submit" title="Bajar"
+            <button class="btn btn--ghost btn--icon" type="submit" title="Bajar"
                     aria-label="Bajar {{ c.nombre }}"
-                    {% if loop.last %}disabled{% endif %}>↓</button>
+                    {% if loop.last %}disabled{% endif %}>{{ icon('chevron-down') }}</button>
           </form>
           <form method="post" action="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/eliminar"
                 hx-post="/recetas/{{ receta.id }}/lineas/{{ fila.id }}/eliminar"
                 hx-target="#receta-cuerpo" hx-swap="outerHTML">
-            <button class="btn btn--ghost btn--xs" type="submit" title="Quitar"
-                    aria-label="Quitar {{ c.nombre }}">✕</button>
+            <button class="btn btn--danger btn--icon" type="submit" title="Quitar"
+                    aria-label="Quitar {{ c.nombre }}">{{ icon('trash') }}</button>
           </form>
-        </td>
-      </tr>
+        </span>
+      </div>
+
+      {#- The nest is drawn, not disclosed (§3.5): indentation and a rule,
+          never a <details> inside a table cell. Three levels is the real
+          case here -- fondo oscuro → salsa criolla → plato -- and the
+          shape of that nest is the point. Percentages survive in here and
+          only in here: the composition bar spans the plate's lines, not
+          the inside of this batch, so the number is the only signal. -#}
+      {#- Collapsible, but **open by default**: §3.5's point is that the
+          nest is drawn rather than hidden behind a triangle that has to be
+          found, and three levels is the real case here. Being able to fold
+          a long batch away is a convenience on top of that, not a return
+          to the old `<details>` that started closed and buried the shape
+          of the recipe.
+
+          `--acento` carries the parent row's own swatch colour, so an open
+          breakdown is visibly attached to the line it came from. -#}
       {% if c.desglose %}
-      <tr class="linea__desglose">
-        <td></td>
-        <td colspan="5">
-          <details>
-            <summary class="muted small">Ver de qué está hecha «{{ c.nombre }}»</summary>
-            <table class="grid grid--anidada">
-              <tbody>
-                {% for sub in c.desglose.lineas %}
-                <tr>
-                  <td>{{ sub.nombre }}{% if sub.faltante %} <span class="pip pip--warn">sin precio</span>{% endif %}</td>
-                  <td class="num muted">{{ sub.linea.cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(sub.linea.unidad, sub.linea.unidad) }}</td>
-                  <td class="num">{{ sub.costo | money }}</td>
-                </tr>
-                {% endfor %}
-                <tr>
-                  <td class="muted small">Lote entero</td>
-                  <td></td>
-                  <td class="num">{{ c.desglose.costo_total | money }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </details>
-        </td>
-      </tr>
+      <details class="desglose" open
+               {% if colores.get(fila.id) %}style="--acento: var({{ colores.get(fila.id) }})"{% endif %}>
+        {#- `RecetaCosteada` carries no Receta object, only its id and name,
+            so the batch's yield is not reachable from here -- and it is
+            already on that preparación's own page, one click away through
+            the line's link. -#}
+        <summary><span class="desglose__t">De qué está hecho el lote de «{{ c.nombre }}»</span></summary>
+        <div class="desglose__lista">
+          {% for sub in c.desglose.lineas %}
+          <div class="desglose__fila">
+            <span>
+              {{ sub.nombre }}
+              {%- if sub.faltante %} <span class="pip pip--warn">sin precio</span>{% endif %}
+            </span>
+            <span class="desglose__n">{{ sub.linea.cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(sub.linea.unidad, sub.linea.unidad) }}</span>
+            <span class="desglose__c">{{ sub.costo | money }}</span>
+            <span class="desglose__p">
+              {%- if sub.costo is not none and c.desglose.costo_total and c.desglose.costo_total > 0 -%}
+                {{ (sub.costo / c.desglose.costo_total * 100) | pct }}
+              {%- else -%}—{%- endif -%}
+            </span>
+          </div>
+          {% endfor %}
+          <div class="desglose__fila desglose__tot">
+            <span>Lote entero</span>
+            <span class="desglose__n"></span>
+            <span class="desglose__c">{{ c.desglose.costo_total | money }}</span>
+            <span class="desglose__p"></span>
+          </div>
+        </div>
+      </details>
       {% endif %}
       {% endif %}
       {% endfor %}
-    </tbody>
-  </table>
+    </div>
+  </div>
   {% else %}
   <p class="empty">Esta receta todavía no tiene ingredientes.</p>
   <p class="empty__hint">
@@ -172,37 +206,97 @@
     Soltá acá para agregar — o usá el botón «Agregar» de la lista
   </div>
 
+  {#- The composition bar: since D39 the only place cost share is
+      expressed, which makes it load-bearing rather than decorative. -#}
+  {% if segmentos %}
+  <div class="comp">
+    {#- On an incomplete receta these percentages are shares of a PARTIAL
+        sum, and the total right below them is «—» for exactly that
+        reason. Saying "Composición del costo" over them would be the same
+        claim D10 refuses to make with the total: 98.7% of what can be
+        priced is not 98.7% of the plate. So the caption changes, and the
+        bar is explicitly about the lines that do have a price. -#}
+    {% if costeo.faltantes %}
+    <p class="comp__t comp__t--parcial">
+      Composición de lo que sí tiene precio — falta {{ costeo.faltantes | length }}
+      ingrediente{{ 's' if costeo.faltantes | length != 1 }}, así que esto no es
+      la composición del plato
+    </p>
+    {% else %}
+    <p class="comp__t">Composición del costo</p>
+    {% endif %}
+    <div class="comp__bar">
+      {% for s in segmentos %}
+      {#- The money is the only thing in here the legend below does not
+          already print, and a `title=` would keep it off a tablet
+          entirely (§4.2). Focusable so a tap reaches it. -#}
+      <div class="comp__seg tip" tabindex="0" style="width: {{ s.pct }}%; background: var({{ s.color }})"
+           data-tooltip="{{ s.nombre }} — {{ s.costo | money }} ({{ s.pct }}%)"></div>
+      {% endfor %}
+    </div>
+    <div class="comp__leg">
+      {% for s in segmentos %}
+      <span class="comp__li">
+        <span class="comp__sw" style="background: var({{ s.color }})"></span>
+        {{ s.nombre }} <span class="c-muted ta-r">{{ s.pct }}%</span>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="totales">
     <div class="kpi">
-      <div class="kpi__label">Costo total</div>
-      <div class="kpi__value">{{ costeo.costo_total | money }}</div>
+      <div class="kpi__k">Costo total</div>
+      {#- The delta chip (§3.4). The app's whole reason to exist is that
+          this number responds to an edit, and an htmx swap that replaces
+          ₡1 046 with ₡1 088 in place is indistinguishable from a page that
+          did not reload.
+
+          The digits themselves snap: an animation the operator sees forty
+          times a day stops reading as feedback and starts reading as lag.
+          The chip carries the message and fades on its own.
+
+          **The server computed this subtraction**, not the browser — there
+          is no arithmetic in `static/vendor/` and there is no total here
+          that `receta_costs.costear` did not produce (D16). It is absent
+          on page load, absent when either end had no cost, and absent when
+          nothing moved. -#}
+      <div class="kpi__v kpi__v--xl">
+        {{ costeo.costo_total | money }}
+        {% if delta %}
+        <span class="delta {{ 'delta--up' if delta > 0 else 'delta--down' }}">
+          {{ '+' if delta > 0 }}{{ delta | money }}
+        </span>
+        {% endif %}
+      </div>
     </div>
     {% if receta.tipo == 'plato' %}
     <div class="kpi">
-      <div class="kpi__label">Porciones</div>
-      <div class="kpi__value">{{ receta.porciones }}</div>
+      <div class="kpi__k">Porciones</div>
+      <div class="kpi__v kpi__v--xl">{{ receta.porciones }}</div>
     </div>
     <div class="kpi kpi--fuerte">
-      <div class="kpi__label">Costo por porción</div>
-      <div class="kpi__value">{{ costeo.costo_por_porcion | money }}</div>
+      <div class="kpi__k">Costo por porción</div>
+      <div class="kpi__v kpi__v--xl">{{ costeo.costo_por_porcion | money }}</div>
     </div>
     {% else %}
     <div class="kpi">
-      <div class="kpi__label">Rinde</div>
-      <div class="kpi__value kpi__value--sm">
+      <div class="kpi__k">Rinde</div>
+      <div class="kpi__v kpi__v--sm">
         {{ receta.rendimiento_cantidad | cantidad }}
         {{ UNIDAD_NOMBRES.get(receta.rendimiento_unidad, receta.rendimiento_unidad) }}
       </div>
     </div>
     <div class="kpi kpi--fuerte">
-      <div class="kpi__label">Costo por {{ receta.rendimiento_unidad }}</div>
-      <div class="kpi__value">{{ costeo.costo_por_unidad_rendimiento | money }}</div>
+      <div class="kpi__k">Costo por {{ receta.rendimiento_unidad }}</div>
+      <div class="kpi__v kpi__v--xl">{{ costeo.costo_por_unidad_rendimiento | money }}</div>
     </div>
     {% endif %}
   </div>
 
   {% if costeo.estado == 'incompleto' and not costeo.faltantes and costeo.lineas %}
-  <p class="muted small">
+  <p class="c-muted small">
     Alguna preparación de esta receta está incompleta. Abrila para ver qué
     ingrediente le falta.
   </p>

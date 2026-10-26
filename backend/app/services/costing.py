@@ -12,8 +12,8 @@ this.
 alternative is silently wrong:**
 
 - An insumo with no usable observation has **no cost** (`None`), never 0.
-  A zero makes the ingredient we know least about look like the cheapest
-  thing on the menu (PLAN.md non-negotiable #7).
+  A zero makes the ingredient with the least evidence behind it look like
+  the cheapest thing on the menu (PLAN.md non-negotiable #7).
 - An **empty window is not an empty series**. Falling back to the newest
   observation outside the window, flagged and aged, beats both silence
   (which hides a delisted ingredient) and refusal (which breaks a whole
@@ -145,9 +145,9 @@ def price_from_series(
     `serie` is every observation from every confirmed, active fuente of one
     insumo -- the union across suppliers, not one supplier's history. That
     union is deliberate and it is what makes `last` volatile for an insumo
-    with two active suppliers: it answers "what would this cost me to cook
-    today", which is the most recent thing you actually paid, from whoever
-    you actually bought it from.
+    with two active suppliers: it answers "what would this cost to cook
+    today" -- the most recent price actually paid, from whoever it was
+    actually bought from.
     """
     if metodo not in METHODS:
         raise ValueError(f"Método de costeo desconocido: {metodo!r}")

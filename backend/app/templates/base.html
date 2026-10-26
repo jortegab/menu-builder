@@ -1,9 +1,16 @@
+{% from "_icons.html" import icon %}
 <!doctype html>
-<html lang="es">
+{#- `sin-js` is removed by the very next script, so it is only ever
+    true when JavaScript does not run. It is what lets a control that
+    htmx makes redundant -- the quantity form's «Aplicar» -- be hidden
+    when htmx is there and present when it is not, without the server
+    having to guess. -#}
+<html lang="es" class="sin-js">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Menu Builder{% endblock %}</title>
+  <script>document.documentElement.classList.remove("sin-js");</script>
   <link rel="stylesheet" href="{{ static_url('app.css') }}">
   {#- Both vendored, never from a CDN: this app runs on the restaurant's
       own machine and has to work with the internet down (D2). htmx is the
@@ -11,24 +18,168 @@
       `defer` because both only act after the document is parsed. -#}
   <script src="{{ static_url('vendor/htmx.min.js') }}" defer></script>
   <script src="{{ static_url('vendor/dnd.js') }}" defer></script>
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
-  <nav class="rail">
-    <div class="rail__brand">{{ company_name }}</div>
-    <a class="rail__link {% if seccion == 'recetas' %}is-on{% endif %}" href="/recetas">Menú</a>
-    <a class="rail__link {% if seccion == 'preparaciones' %}is-on{% endif %}" href="/preparaciones">Preparaciones</a>
-    <a class="rail__link {% if seccion == 'insumos' %}is-on{% endif %}" href="/insumos">Insumos</a>
-    <a class="rail__link rail__link--sub {% if seccion == 'mapeo' %}is-on{% endif %}" href="/insumos/mapeo">
-      {% set _pend = pendientes_mapeo(request) %}
-      Mapeo{% if _pend %} <span class="pip pip--warn">{{ _pend }}</span>{% endif %}
+
+{#- The rail is upstream's, structurally and visually: fixed at --rail-w,
+    a brand block over a hairline, icon + label per item, a <details>
+    group for the Insumos pair, and Ajustes pinned to the foot above its
+    own rule. That is D33 -- an operator moving between the two apps
+    should not notice the boundary. -#}
+<aside class="rail">
+  <div class="rail__brand">
+    <span class="rail__mark">{{ company_name }}</span>
+  </div>
+
+  <nav class="rail__nav">
+    {#- Búsqueda global (§3.8). A real link, not only a keystroke: a
+        <dialog> cannot be opened without script, so `Ctrl-K` alone would
+        make search a feature the no-JS path does not have. The script
+        below upgrades this same link into the sheet. -#}
+    <a class="rail__link" href="/buscar" id="abrir-buscador">
+      <span class="rail__link-inner">{{ icon('search') }}<span class="rail__t">Buscar</span></span>
     </a>
-    <a class="rail__link rail__foot {% if seccion == 'ajustes' %}is-on{% endif %}" href="/ajustes">Ajustes</a>
+
+    <a class="rail__link {% if seccion == 'recetas' %}is-on{% endif %}" href="/recetas">
+      <span class="rail__link-inner">{{ icon('menu') }}<span class="rail__t">Menú</span></span>
+    </a>
+
+    <a class="rail__link {% if seccion == 'preparaciones' %}is-on{% endif %}" href="/preparaciones">
+      <span class="rail__link-inner">{{ icon('layers') }}<span class="rail__t">Preparaciones</span></span>
+    </a>
+
+    {#- Insumos and its mapping queue are one group, open whenever either
+        is the active section. A <details>/<summary> disclosure, not a JS
+        toggle: it works with zero JavaScript, same as upstream's. -#}
+    {% set _pend = pendientes_mapeo(request) %}
+    <details class="rail__group" {% if seccion in ('insumos', 'mapeo') %}open{% endif %}>
+      <summary class="rail__link {% if seccion in ('insumos', 'mapeo') %}is-on{% endif %}">
+        <span class="rail__link-inner">{{ icon('package') }}<span class="rail__t">Insumos</span></span>
+      </summary>
+      <a class="rail__link rail__link--sub {% if seccion == 'insumos' %}is-on{% endif %}" href="/insumos">
+        <span class="rail__link-inner">{{ icon('list') }}<span class="rail__t">Todos</span></span>
+      </a>
+      <a class="rail__link rail__link--sub {% if seccion == 'mapeo' %}is-on{% endif %}" href="/insumos/mapeo">
+        <span class="rail__link-inner">{{ icon('link') }}<span class="rail__t">Mapeo</span></span>
+        {#- The only thing in the app that ever nags, and it clears when
+            the operator acts -- which is what makes amber the right
+            palette here rather than red. -#}
+        {% if _pend %}<span class="pip pip--warn">{{ _pend }}</span>{% endif %}
+      </a>
+    </details>
   </nav>
-  <main class="stage">
-    <header class="stage__head">
-      <h1>{% block heading %}{% endblock %}</h1>
-    </header>
-    {% block content %}{% endblock %}
-  </main>
+
+  <div class="rail__foot">
+    <a class="rail__link {% if seccion == 'ajustes' %}is-on{% endif %}" href="/ajustes">
+      <span class="rail__link-inner">{{ icon('settings') }}<span class="rail__t">Ajustes</span></span>
+    </a>
+  </div>
+</aside>
+
+<main class="stage">
+  <header class="head">
+    <div>
+      <h1 class="head__title">{% block heading %}{% endblock %}</h1>
+      {% block subheading %}{% endblock %}
+    </div>
+    <div class="head__acts">{% block acciones %}{% endblock %}</div>
+  </header>
+  {% block content %}{% endblock %}
+</main>
+
+{#- El buscador (§3.8). Not rendered on `/buscar` itself: that page IS
+    the search, so a second copy of the same fragment would put
+    `id="buscar-hits"` and `id="hit-primero"` on the page twice — invalid,
+    and Enter would follow whichever the parser saw first.
+
+    Upstream's `.sheet` -- a native <dialog> with a backdrop -- because it
+    already IS the modal component in this design system, and inventing a
+    second one would be exactly the divergence D33 exists to stop.
+
+    Everything inside is a plain form and plain links, so the sheet is a
+    faster way to reach `/buscar`, never the only way. -#}
+{#- Where a swapped-in <dialog> lands, ported from upstream's base.html.
+    A partial htmx puts in here opens itself, and `data-block-close` keeps
+    Escape from dismissing a dialog that is watching a job it cannot stop. -#}
+<div id="modal-host"></div>
+
+<script>
+  document.body.addEventListener('cancel', function (e) {
+    if (e.target.matches('dialog[data-block-close]')) e.preventDefault();
+  }, true);
+
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (e.target.id === 'modal-host') {
+      var d = e.target.querySelector('dialog');
+      if (d && d.showModal) d.showModal();
+    }
+  });
+</script>
+
+{% if request.url.path != "/buscar" %}
+<dialog class="sheet buscador" id="buscador" aria-label="Buscar">
+  <form class="sheet__head" method="get" action="/buscar" id="form-buscar">
+    {{ icon('search') }}
+    <input class="buscador__q" type="search" name="q" autocomplete="off"
+           placeholder="Plato, preparación o insumo…"
+           hx-get="/buscar" hx-target="#buscar-hits" hx-swap="outerHTML"
+           hx-trigger="keyup changed delay:150ms, search">
+    {#- A real close button, not a hint that says «Esc». The keystroke
+        still works — a <dialog> closes on Escape natively — but a key
+        badge is not an affordance on a tablet, where there is no key to
+        press. `.sheet__x` is upstream's own control for exactly this. -#}
+    <button class="sheet__x" type="button" value="cancel"
+            aria-label="Cerrar" onclick="this.closest('dialog').close()">×</button>
+  </form>
+  <div class="sheet__body">
+    {#- Always empty on load: the sheet is opened to type into, and a
+        pre-filled result list would be answering a question nobody asked
+        yet. §5 — nothing on this screen happens on page load. -#}
+    {% with q = "", hits = [] %}{% include "busqueda/_resultados.html" %}{% endwith %}
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var sheet = document.getElementById('buscador');
+  var abrir = document.getElementById('abrir-buscador');
+  if (!sheet || !sheet.showModal || !abrir) return;   // no <dialog>: the link still works
+
+  function abrirlo(e) {
+    if (e) e.preventDefault();
+    if (!sheet.open) sheet.showModal();
+    var q = sheet.querySelector('.buscador__q');
+    if (q) { q.focus(); q.select(); }
+  }
+
+  abrir.addEventListener('click', abrirlo);
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) abrirlo(e);
+  });
+
+  /* Enter follows the first result. The form's own submit is the fallback
+     when there is no first result -- it navigates to /buscar with the
+     query, which is the same place a slower path would have got to. */
+  document.getElementById('form-buscar').addEventListener('submit', function (e) {
+    var primero = sheet.querySelector('#hit-primero');
+    if (primero) { e.preventDefault(); primero.click(); }
+  });
+
+  /* Clicking the backdrop closes. A <dialog>'s backdrop is not a separate
+     element, so the click lands on the dialog itself -- outside its own
+     content box is the only way to tell. Esc is native and needs nothing. */
+  sheet.addEventListener('click', function (e) {
+    var caja = sheet.getBoundingClientRect();
+    var fuera =
+      e.clientX < caja.left || e.clientX > caja.right ||
+      e.clientY < caja.top || e.clientY > caja.bottom;
+    if (fuera) sheet.close();
+  });
+})();
+</script>
+{% endif %}
+
 </body>
 </html>

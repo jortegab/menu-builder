@@ -1,0 +1,128 @@
+{% from "_icons.html" import icon %}
+{#- El modo simulador (§3.9, D42): move the quantities, watch the cost,
+    write nothing until the operator says so.
+
+    Rendered both inside `simular.html` and alone as the answer to every
+    recompute, from the same context — one render path, exactly as
+    `_cuerpo.html` is for the builder (D16).
+
+    **Nothing on this screen was computed in the browser.** Every figure
+    came out of `receta_costs.simular`, which is `graph.cost_recipe` over a
+    copy of the graph with different numbers in it. There is no second
+    costing engine and no arithmetic in `static/vendor/`. -#}
+<div id="sim-cuerpo">
+
+  <form class="sim" method="post" action="/recetas/{{ receta.id }}/simular"
+        hx-post="/recetas/{{ receta.id }}/simular"
+        hx-target="#sim-cuerpo" hx-swap="outerHTML" id="form-sim">
+    <div class="sim__head">
+      <span class="sim__t">{{ icon('bulb') }} Modo simulador — nada se está guardando</span>
+      <span class="c-muted small">
+        Cambiá las cantidades y mirá el costo. Si salís de esta página, se
+        pierde y la receta queda como estaba.
+      </span>
+    </div>
+
+    <div class="lineas" id="sim-lineas">
+      <div class="lineas__head">
+        <span class="linea__nom">Ingrediente</span>
+        <span class="linea__cant">Cantidad</span>
+        <span class="linea__costo">Ahora</span>
+        <span class="linea__costo">Simulado</span>
+      </div>
+
+      {% set costos_actuales = {} %}
+      {% for c in sim.actual.lineas or [] %}{% set _ = costos_actuales.update({c.linea.linea_id: c.costo}) %}{% endfor %}
+      {% set costos_sim = {} %}
+      {% for c in sim.simulada.lineas or [] %}{% set _ = costos_sim.update({c.linea.linea_id: c.costo}) %}{% endfor %}
+
+      {% for id, fila in filas.items() %}
+      <div class="linea">
+        <span class="linea__nom">{{ nombres.get(id) }}</span>
+        <span class="linea__cant">
+          {#- A real text input, never type=number: a comma is a valid
+              decimal separator in Costa Rica and type=number refuses it.
+              The id is what lets htmx put the cursor back after a swap. -#}
+          <input class="step__v" id="sim-{{ id }}" name="cant-{{ id }}"
+                 value="{{ cantidades.get(id) | cantidad }}" inputmode="decimal"
+                 aria-label="Cantidad simulada de {{ nombres.get(id) }}"
+                 hx-post="/recetas/{{ receta.id }}/simular"
+                 hx-include="closest form" hx-sync="closest form:replace"
+                 hx-trigger="change, keyup changed delay:400ms">
+          <span class="c-muted small">{{ UNIDAD_NOMBRES.get(fila.unidad, fila.unidad) }}</span>
+        </span>
+        <span class="linea__costo c-muted">{{ costos_actuales.get(id) | money }}</span>
+        <span class="linea__costo">{{ costos_sim.get(id) | money }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {#- `sin-js` hides this while htmx is running, because the inputs post
+        on their own then. With JavaScript off it is the only way to
+        recompute, so it is present and it works. -#}
+    <div class="actions sim__aplicar">
+      <button class="btn btn--ghost" type="submit">Recalcular</button>
+    </div>
+  </form>
+
+  <div class="totales">
+    <div class="kpi">
+      <div class="kpi__k">{{ 'Costo por porción' if receta.tipo == 'plato' else 'Costo del lote' }} ahora</div>
+      <div class="kpi__v kpi__v--xl c-muted">
+        {{ (sim.actual.costo_por_porcion if receta.tipo == 'plato' else sim.actual.costo_total) | money }}
+      </div>
+    </div>
+    <div class="kpi kpi--fuerte">
+      <div class="kpi__k">Simulado</div>
+      <div class="kpi__v kpi__v--xl">
+        {{ (sim.simulada.costo_por_porcion if receta.tipo == 'plato' else sim.simulada.costo_total) | money }}
+        {% if delta_sim %}
+        <span class="delta {{ 'delta--up' if delta_sim > 0 else 'delta--down' }}">
+          {{ '+' if delta_sim > 0 }}{{ delta_sim | money }}
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if sim.actual.faltantes or sim.simulada.faltantes %}
+  <p class="c-muted small">
+    Esta receta está incompleta, así que los totales son «—»: falta el
+    precio de algún ingrediente y una suma parcial se lee como el costo del
+    plato sin serlo.
+  </p>
+  {% endif %}
+
+  {#- D42's third constraint, and the one that bites: changing a salsa
+      changes every plato that uses it. «Esta salsa sale 8% más barata» is
+      not the decision anyone is making — «estos platos bajan esto» is. -#}
+  {% if sim.afectadas %}
+  <div class="card">
+    <div class="bloque__h">
+      <span class="bloque__ico">{{ icon('layers') }}</span>
+      <h2 class="card__h">Qué se mueve si guardás esto</h2>
+    </div>
+    <p class="c-muted small">
+      Esta preparación la usan otras recetas. El cambio les llega a todas.
+    </p>
+    <table class="grid">
+      <thead>
+        <tr><th>Receta</th><th class="ta-r">Ahora</th><th class="ta-r">Con el cambio</th></tr>
+      </thead>
+      <tbody>
+        {% for otra, antes, despues in sim.afectadas %}
+        <tr>
+          <td><a href="/recetas/{{ otra.id }}">{{ otra.nombre }}</a></td>
+          <td class="ta-r c-muted">
+            {{ (antes.costo_por_porcion if otra.tipo == 'plato' else antes.costo_total) | money }}
+          </td>
+          <td class="ta-r">
+            {{ (despues.costo_por_porcion if otra.tipo == 'plato' else despues.costo_total) | money }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>

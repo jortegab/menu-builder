@@ -2,20 +2,20 @@
 {% set seccion = 'insumos' %}
 {% block title %}Insumos · Menu Builder{% endblock %}
 {% block heading %}Insumos{% endblock %}
+{% block acciones %}
+<a class="btn btn--solid" href="/insumos/nuevo">Nuevo insumo</a>
+{% endblock %}
 {% block content %}
 
-<div class="toolbar">
-  <form class="toolbar__filters" method="get" action="/insumos">
-    <input class="input" type="search" name="q" value="{{ q }}" placeholder="Buscar insumo…">
-    <select class="input" name="estado" onchange="this.form.submit()">
-      <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activos</option>
-      <option value="archivados" {% if estado == 'archivados' %}selected{% endif %}>Archivados</option>
-      <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todos</option>
-    </select>
-    <button class="btn btn--ghost" type="submit">Buscar</button>
-  </form>
-  <a class="btn" href="/insumos/nuevo">Nuevo insumo</a>
-</div>
+<form class="filters" method="get" action="/insumos">
+  <input class="filters__q" type="search" name="q" value="{{ q }}" placeholder="Buscar insumo…">
+  <select name="estado" onchange="this.form.submit()">
+    <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activos</option>
+    <option value="archivados" {% if estado == 'archivados' %}selected{% endif %}>Archivados</option>
+    <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+  </select>
+  <button class="btn btn--ghost" type="submit">Buscar</button>
+</form>
 
 <div class="card">
   {% if insumos %}
@@ -24,42 +24,46 @@
       <tr>
         <th>Insumo</th>
         <th>Unidad base</th>
-        <th class="num">Merma</th>
+        <th class="ta-r">Merma</th>
         <th>Método</th>
-        <th class="num">Fuentes</th>
-        <th class="num">Costo</th>
+        <th class="ta-r">Fuentes</th>
+        <th class="ta-r">Costo</th>
       </tr>
     </thead>
     <tbody>
       {% for i in insumos %}
-      <tr class="row-link" onclick="location.href='/insumos/{{ i.id }}'">
+      <tr onclick="location.href='/insumos/{{ i.id }}'">
         <td>
           <strong>{{ i.nombre }}</strong>
           {% if not i.activo %}<span class="pip">Archivado</span>{% endif %}
-          {% if i.categoria_slug %}<div class="muted small">{{ i.categoria_slug }}</div>{% endif %}
+          {% if i.categoria_slug %}<div><span class="pip pip--faint">{{ categoria_nombre(request, i.categoria_slug) }}</span></div>{% endif %}
         </td>
         <td>{{ UNIDAD_LABELS.get(i.unidad_base, i.unidad_base) }}</td>
-        <td class="num">{{ i.merma_pct | pct }}</td>
+        <td class="ta-r">{{ i.merma_pct | pct }}</td>
         <td>
           {% if i.metodo_costeo %}{{ METODO_LABELS.get(i.metodo_costeo) }}
-          {% else %}<span class="muted">{{ METODO_LABELS.get(metodo_default) }} (por defecto)</span>{% endif %}
+          {% else %}<span class="c-muted">{{ METODO_LABELS.get(metodo_default) }} (por defecto)</span>{% endif %}
         </td>
-        <td class="num">
+        <td class="ta-r">
           {% set n = fuentes.get(i.id, 0) %}
           {% if n %}{{ n }}{% else %}<span class="pip pip--warn">sin fuentes</span>{% endif %}
         </td>
-        <td class="num">
+        <td class="ta-r">
           {% set c = costos.get(i.id) %}
           {% if c and c.valor is not none %}
-            {{ c.valor | money }}<span class="muted small">/{{ i.unidad_base }}</span>
-            {% if c.precio_viejo %}<span class="pip pip--warn" title="El precio más nuevo tiene {{ c.antiguedad_dias }} días">viejo</span>{% endif %}
-          {% else %}<span class="muted">—</span>{% endif %}
+            {{ c.valor | money }}<span class="c-muted small">/{{ i.unidad_base }}</span>
+            {# `.tip` and not `title=`: a title is hover-only, and this app is
+               meant to be read on a tablet where hover does not exist (§4.2).
+               tabindex makes it reachable by tap and by keyboard alike. #}
+            {% if c.precio_viejo %}<span class="pip pip--warn tip" tabindex="0"
+                  data-tooltip="El precio más nuevo tiene {{ c.antiguedad_dias }} días">viejo</span>{% endif %}
+          {% else %}<span class="c-muted">—</span>{% endif %}
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted small">
+  <p class="c-muted small">
     Un costo en blanco es un insumo sin fuentes con precio: no puede costear
     ninguna receta todavía. Se arregla en el mapeo.
   </p>

@@ -1,0 +1,9 @@
+Alembic migrations for Menu Builder.
+
+See ../alembic.ini for why this lives under backend/ rather than at the
+repo root, and env.py for how the database URL and target metadata are
+resolved. CLAUDE.md ("Migraciones de esquema") documents the day-to-day
+commands.
+
+The layout, the config and the commands are `restaurant-manager`'s,
+deliberately unchanged (D2).

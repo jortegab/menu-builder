@@ -5,38 +5,38 @@
 {% block content %}
 
 <div class="card">
-  <h2 class="card__title">Catálogo de restaurant-manager</h2>
-  <p class="muted">
+  <h2 class="card__h">Catálogo de restaurant-manager</h2>
+  <p class="c-muted">
     Los precios de este app salen del catálogo de <code>restaurant-manager</code>.
     Acá se traen. Es una copia: se puede reconstruir entera cuando sea, y
     nada de lo que vive solo acá se pierde si se borra.
   </p>
 
-  <div class="kpis">
-    <div class="kpi"><div class="kpi__label">Productos</div><div class="kpi__value">{{ productos }}</div></div>
-    <div class="kpi"><div class="kpi__label">Compras</div><div class="kpi__value">{{ precios }}</div></div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi__k">Productos</div><div class="kpi__v">{{ productos }}</div></div>
+    <div class="kpi"><div class="kpi__k">Compras</div><div class="kpi__v">{{ precios }}</div></div>
     <div class="kpi">
-      <div class="kpi__label">Última sincronización</div>
-      <div class="kpi__value kpi__value--sm">
+      <div class="kpi__k">Última sincronización</div>
+      <div class="kpi__v kpi__v--sm">
         {% if as_of %}{{ as_of.strftime('%d/%m/%Y %H:%M') }}{% else %}nunca{% endif %}
       </div>
     </div>
   </div>
 
-  <p class="muted small">
+  <p class="c-muted small">
     Origen: <code>{{ upstream }}</code>
     {% if watermark %}· trae solo lo modificado desde {{ watermark.strftime('%d/%m/%Y %H:%M') }}{% endif %}
   </p>
 
   <div class="actions">
     <form method="post" action="/ajustes/sincronizar">
-      <button class="btn" type="submit">Sincronizar</button>
+      <button class="btn btn--solid" type="submit">Sincronizar</button>
     </form>
     <form method="post" action="/ajustes/sincronizar?full=1">
       <button class="btn btn--ghost" type="submit">Reconstruir todo</button>
     </form>
   </div>
-  <p class="muted small">
+  <p class="c-muted small">
     «Sincronizar» trae solo lo que cambió — es cuestión de segundos.
     «Reconstruir todo» vuelve a leer el catálogo completo y tarda cerca de
     un minuto; hace falta solo si algo quedó raro.
@@ -44,11 +44,11 @@
 </div>
 
 <div class="card">
-  <h2 class="card__title">Últimas sincronizaciones</h2>
+  <h2 class="card__h">Últimas sincronizaciones</h2>
   {% if runs %}
   <table class="grid">
     <thead>
-      <tr><th>Cuándo</th><th>Estado</th><th class="num">Productos</th><th class="num">Compras nuevas</th><th>Detalle</th></tr>
+      <tr><th>Cuándo</th><th>Estado</th><th class="ta-r">Productos</th><th class="ta-r">Compras nuevas</th><th>Detalle</th></tr>
     </thead>
     <tbody>
       {% for r in runs %}
@@ -59,9 +59,9 @@
           {% elif r.status == 'error' %}<span class="pip pip--alert">Falló</span>
           {% else %}<span class="pip pip--warn">Corriendo</span>{% endif %}
         </td>
-        <td class="num">{{ r.productos_upserted }}</td>
-        <td class="num">{{ r.precios_inserted }}</td>
-        <td class="muted small">{{ r.error or '—' }}</td>
+        <td class="ta-r">{{ r.productos_upserted }}</td>
+        <td class="ta-r">{{ r.precios_inserted }}</td>
+        <td class="c-muted small">{{ r.error or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -70,19 +70,109 @@
   <p class="empty">Todavía no se ha sincronizado nada.</p>
   {% endif %}
 </div>
+<div class="card">
+  <h2 class="card__h">Agrupación de productos parecidos</h2>
+  <p class="c-muted">
+    El mapeo agrupa los productos que son el mismo insumo escrito distinto —
+    «OSOBUCO» y «OSOBUCO PICADO, CAJAS 3KG». Esa lectura se calcula una vez
+    por producto y se guarda, así que pasar de página no cuesta nada. Se
+    rehace sola cuando el catálogo trae productos nuevos.
+  </p>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi__k">Ya agrupados</div><div class="kpi__v">{{ agrupados }}</div></div>
+    <div class="kpi"><div class="kpi__k">Faltan</div><div class="kpi__v">{{ faltan_agrupar }}</div></div>
+  </div>
+
+  {% if faltan_agrupar %}
+  <div class="actions">
+    <button class="btn btn--solid" type="button"
+            hx-post="/ajustes/agrupar" hx-target="#modal-host" hx-swap="innerHTML">
+      Agrupar los {{ faltan_agrupar }} que faltan
+    </button>
+  </div>
+  <p class="c-muted small">
+    Es una consulta a Claude por producto, así que tarda varios minutos y
+    corre en segundo plano — la ventana muestra el avance y se puede cerrar
+    sin cortar nada. Guarda cada producto apenas lo resuelve, así que
+    interrumpirla no pierde lo hecho. Mientras falten, esas fichas calculan
+    el parecido en el momento: funcionan igual, solo que más lento.
+  </p>
+  {% else %}
+  <p class="c-muted small">
+    Todo el catálogo de la cola está agrupado. La sincronización se encarga
+    de los productos nuevos.
+  </p>
+  {% endif %}
+</div>
+
 
 <div class="card">
-  <h2 class="card__title">Histórico de costo de las recetas</h2>
-  <p class="muted">
+  <h2 class="card__h">Qué entra en la cola de mapeo</h2>
+  <p class="c-muted">
+    El catálogo trae de todo — cloro, servilletas, detergente — y nada de
+    eso llega nunca a un plato. Esto decide qué se le pone enfrente a uno
+    en <a href="/insumos/mapeo">Mapeo</a>. Es una decisión sobre cómo
+    trabaja este restaurante, no algo que se cambie en cada visita, y por
+    eso vive acá y no en la cola misma: ahí, un clic de más al lado del
+    botón que descarta en bloque cambiaba silenciosamente cuántos se
+    descartaban.
+  </p>
+
+  <form method="post" action="/ajustes/mapeo">
+    <div class="field">
+      <label class="check check--alto">
+        <input type="checkbox" name="solo_receta" value="1" {% if alcance.solo_receta %}checked{% endif %}>
+        <span class="check__box"></span>
+        <span class="check__b">
+          <span class="check__t">Solo alimentos, bebidas y empaques</span>
+          <span class="check__d">
+            Las tres familias que pueden terminar costeadas en un plato.
+            Empaques está adentro a propósito: un plato que sale en un
+            envase paga el envase. Sin esto, la cola trae también limpieza,
+            menaje, higiene y oficina.
+          </span>
+        </span>
+      </label>
+    </div>
+
+    <div class="field ajuste__dias">
+      <label for="dias">Comprado en los últimos</label>
+      <div class="campo-uni">
+        <input id="dias" name="dias_reciente" value="{{ alcance.dias_reciente }}"
+               inputmode="numeric">
+        <span class="campo-uni__u">días</span>
+      </div>
+      <p class="field__hint">
+        0 quita el límite y trae todo el catálogo, por viejo que sea.
+      </p>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn--solid" type="submit">Guardar</button>
+    </div>
+  </form>
+
+  <p class="c-muted small">
+    Con lo que hay puesto hoy quedan <strong>{{ pendientes_alcance }}</strong>
+    producto{{ 's' if pendientes_alcance != 1 }} sin decidir — el mismo número
+    que trae la insignia de Mapeo, porque salen del mismo filtro.
+  </p>
+</div>
+
+
+<div class="card">
+  <h2 class="card__h">Histórico de costo de las recetas</h2>
+  <p class="c-muted">
     Cada vez que se sincroniza el catálogo se guarda, además, lo que cuesta
     ese día cada receta activa. Eso es lo que dibuja la curva de «Histórico
     de costo» en cada plato — y se guarda en vez de recalcularse para que
     editar una merma hoy no le cambie la forma al pasado.
   </p>
 
-  <div class="kpis">
-    <div class="kpi"><div class="kpi__label">Costos guardados</div><div class="kpi__value">{{ historico_filas }}</div></div>
-    <div class="kpi"><div class="kpi__label">Días con datos</div><div class="kpi__value">{{ historico_dias }}</div></div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi__k">Costos guardados</div><div class="kpi__v">{{ historico_filas }}</div></div>
+    <div class="kpi"><div class="kpi__k">Días con datos</div><div class="kpi__v">{{ historico_dias }}</div></div>
   </div>
 
   <div class="actions">
@@ -93,9 +183,9 @@
       <button class="btn btn--ghost" type="submit">Sembrar los últimos 6 meses</button>
     </form>
   </div>
-  <p class="muted small">
+  <p class="c-muted small">
     «Guardar el costo de hoy» es lo mismo que hace la sincronización sola;
-    sirve si cambiaste una receta y querés que quede anotado ya.
+    sirve cuando una receta cambió y conviene dejarlo anotado ya.
     <br>
     «Sembrar» rellena los días de antes, uno por semana, con los precios
     reales de cada uno de esos días pero con la receta y los mapeos de hoy

@@ -34,7 +34,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import CatalogPricePoint, CatalogProduct, CatalogSyncRun
+from ..models import CatalogCategoria, CatalogPricePoint, CatalogProduct, CatalogSyncRun
 from .catalog_client import CatalogClient, CatalogUnavailable, ContractMismatch
 
 log = logging.getLogger(__name__)
@@ -189,6 +189,40 @@ def _sync_prices(db: Session, client, product: CatalogProduct) -> int:
     return inserted
 
 
+def _sync_categorias(db: Session, client) -> int:
+    """Mirror upstream's category names. Idempotent, keyed on the slug.
+
+    Rows are never deleted here. A category upstream retires is a category
+    some mirrored product may still point at, and rendering that product's
+    slug raw because the name was tidied away is exactly the regression
+    this table exists to prevent. They cost nothing to keep.
+
+    **The parent arrives as `parent_id` and is resolved to a slug here.**
+    Upstream keys its tree on the row id; this mirror keys on the slug
+    instead (see `CatalogCategoria`), because the slug is the stable thing
+    a product points at and the only thing this app ever matches on. The
+    whole tree comes in one unpaginated payload, so the id -> slug map is
+    built from that same payload and costs no second request.
+    """
+    payload = client.categorias()
+    items = [item for item in payload.get("items", []) if item.get("slug")]
+    slug_por_id = {
+        item["id"]: item["slug"] for item in items if item.get("id") is not None
+    }
+    n = 0
+    for item in items:
+        slug = item["slug"]
+        fila = db.get(CatalogCategoria, slug)
+        if fila is None:
+            fila = CatalogCategoria(slug=slug)
+            db.add(fila)
+        fila.nombre = item.get("nombre") or slug
+        fila.parent_slug = slug_por_id.get(item.get("parent_id"))
+        n += 1
+    db.commit()
+    return n
+
+
 def sync_catalog(db: Session, client, *, full: bool = False) -> CatalogSyncRun:
     """Pull the catalog and its price history into the mirror.
 
@@ -209,6 +243,12 @@ def sync_catalog(db: Session, client, *, full: bool = False) -> CatalogSyncRun:
         # Before a single row is written: refuse a contract whose meaning
         # this app was not written against, rather than parsing hopefully.
         client.version()
+
+        # The names first: they are what the UI shows in place of a slug,
+        # they are a few dozen rows, and a product page that renders
+        # `alimentos_verduras` because the taxonomy arrived after the
+        # products would be a worse first impression than a slow sync.
+        _sync_categorias(db, client)
 
         cursor = 0
         while True:

@@ -1,94 +1,205 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% set seccion = 'insumos' %}
 {% set editando = insumo is not none %}
 {% block title %}{{ 'Editar insumo' if editando else 'Nuevo insumo' }} · Menu Builder{% endblock %}
 {% block heading %}{{ 'Editar insumo' if editando else 'Nuevo insumo' }}{% endblock %}
 {% block content %}
 
-<form class="card form" method="post"
+{#- Five cards in two rows, sized so the whole form fits a 1080p screen
+    with nothing to scroll: Guardar and the field in doubt should be
+    visible at the same time.
+
+    One card per dimension, and the test for "dimension" is that a card
+    holds the fields that FAIL TOGETHER -- one explanation, one class of
+    mistake. Unidad base and merma looked like one card and are not: the
+    first is notation (D30 -- it changes no value, only its denomination)
+    and the second is arithmetic (₡4 000/kg at 12% is ₡4 545/kg usable).
+    They carry two different warnings, so they are two cards, and each
+    <summary> now carries its own instead of one fold holding both. -#}
+<form class="form" method="post"
       action="{{ '/insumos/' ~ insumo.id if editando else '/insumos' }}">
 
-  <div class="field">
-    <label for="nombre">Nombre</label>
-    <input class="input {% if errors.nombre %}input--bad{% endif %}" id="nombre" name="nombre"
-           value="{{ valores.nombre or '' }}" autofocus placeholder="Pechuga deshuesada">
-    {% if errors.nombre %}<p class="field__error">{{ errors.nombre }}</p>{% endif %}
-    <p class="field__hint">Como le dice la cocina, no como viene en la factura.</p>
+  <div class="row row--tres">
+    <section class="card">
+      <div class="bloque__h">
+        <span class="bloque__ico">{{ icon('tag') }}</span>
+        <h2 class="card__h">Identidad</h2>
+      </div>
+
+      <div class="rejilla">
+        <div class="field{% if errors.nombre %} is-bad{% endif %}">
+          <label for="nombre">Nombre</label>
+          <input id="nombre" name="nombre"
+                 value="{{ valores.nombre or '' }}" autofocus placeholder="Pechuga deshuesada">
+          {% if errors.nombre %}<p class="field__err">{{ errors.nombre }}</p>{% endif %}
+        </div>
+
+        <div class="field">
+          <label for="categoria_slug">Categoría</label>
+          <select id="categoria_slug" name="categoria_slug">
+            <option value="">— sin categoría —</option>
+            {% for slug in categorias %}
+            <option value="{{ slug }}" {% if valores.categoria_slug == slug %}selected{% endif %}>{{ categoria_nombre(request, slug) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <details class="ayuda">
+        <summary class="ayuda__q">
+          {{ icon('chevron-right', 14) }}
+          Como le dice la cocina, no como viene en la factura
+        </summary>
+        <div class="ayuda__b">
+          <p>
+            «Pechuga deshuesada», no «filete de pechuga deshuesada de
+            Aviocal». Los proveedores se cuelgan del insumo después, en el
+            mapeo, y pueden ser varios.
+          </p>
+          <p>Las categorías son las que trae el catálogo de restaurant-manager.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="bloque__h">
+        <span class="bloque__ico">{{ icon('scale') }}</span>
+        <h2 class="card__h">Unidad base</h2>
+      </div>
+
+      <div class="rejilla">
+        <div class="field{% if errors.unidad_base %} is-bad{% endif %}">
+          <label for="unidad_base">Se guarda por</label>
+          <select id="unidad_base" name="unidad_base">
+            {% for value, label in UNIDAD_LABELS.items() %}
+            <option value="{{ value }}" {% if valores.unidad_base == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% if errors.unidad_base %}<p class="field__err">{{ errors.unidad_base }}</p>{% endif %}
+        </div>
+      </div>
+
+      <details class="ayuda">
+        <summary class="ayuda__q">
+          {{ icon('chevron-right', 14) }}
+          Es solo cómo se guarda el costo, no cómo se escribe en las recetas
+        </summary>
+        <div class="ayuda__b">
+          <p>
+            Se compra en paquetes de 5 kg y acá va <em>gramos</em>: el costo
+            queda por gramo. Después cada receta pide lo que le sirva —
+            0,18 kg, 180 g o 6 oz — y la conversión se hace sola.
+          </p>
+          <p>
+            Lo único que no se puede es cruzar peso con volumen: para eso
+            haría falta la densidad.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="bloque__h">
+        <span class="bloque__ico">{{ icon('scissors') }}</span>
+        <h2 class="card__h">Merma</h2>
+      </div>
+
+      <div class="rejilla">
+        <div class="field field--corto{% if errors.merma_pct %} is-bad{% endif %}">
+          <label for="merma_pct">Se pierde al preparar</label>
+          <div class="campo-uni">
+            <input id="merma_pct" name="merma_pct" value="{{ valores.merma_pct or '0' }}" inputmode="decimal">
+            <span class="campo-uni__u">%</span>
+          </div>
+          {% if errors.merma_pct %}<p class="field__err">{{ errors.merma_pct }}</p>{% endif %}
+        </div>
+      </div>
+
+      <details class="ayuda">
+        <summary class="ayuda__q">
+          {{ icon('chevron-right', 14) }}
+          Es una propiedad del insumo, no de cada receta
+        </summary>
+        <div class="ayuda__b">
+          <p>
+            Hueso, cáscara, recorte: lo que se va antes de que el insumo
+            entre a una receta. A ₡4 000 el kilo con 12% de merma, el kilo
+            usable cuesta ₡4 545.
+          </p>
+          <p>
+            <strong>No es el rendimiento</strong>, que es lo que una receta
+            produce. Aplicar las dos a la misma pérdida la cuenta dos veces.
+          </p>
+        </div>
+      </details>
+    </section>
   </div>
 
-  <div class="field">
-    <label for="unidad_base">Unidad base</label>
-    <select class="input {% if errors.unidad_base %}input--bad{% endif %}" id="unidad_base" name="unidad_base">
-      {% for value, label in UNIDAD_LABELS.items() %}
-      <option value="{{ value }}" {% if valores.unidad_base == value %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    {% if errors.unidad_base %}<p class="field__error">{{ errors.unidad_base }}</p>{% endif %}
-    <p class="field__hint">
-      <strong>Es solo cómo se guarda el costo</strong>, no cómo hay que
-      escribirlo en las recetas. Se compra en paquetes de 5 kg y acá va
-      <em>gramos</em>: el costo queda por gramo.
-      <br>
-      Después cada receta pide lo que le sirva — 0,18 kg, 180 g o 6 oz —
-      y la conversión se hace sola. Lo único que no se puede es cruzar
-      peso con volumen: para eso haría falta la densidad.
-    </p>
+  <div class="row">
+    <section class="card">
+      <div class="bloque__h">
+        <span class="bloque__ico">{{ icon('chart') }}</span>
+        <h2 class="card__h">Método de costeo</h2>
+      </div>
+
+      <div class="rejilla">
+        <div class="field{% if errors.metodo_costeo %} is-bad{% endif %}">
+          <label for="metodo_costeo">Método</label>
+          <select id="metodo_costeo" name="metodo_costeo">
+            <option value="">Usar el de Ajustes — {{ METODO_LABELS.get(metodo_default) }}</option>
+            {% for value, label in METODO_LABELS.items() %}
+            <option value="{{ value }}" {% if valores.metodo_costeo == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% if errors.metodo_costeo %}<p class="field__err">{{ errors.metodo_costeo }}</p>{% endif %}
+        </div>
+
+        <div class="field field--corto{% if errors.ventana_dias %} is-bad{% endif %}">
+          <label for="ventana_dias">Ventana</label>
+          <div class="campo-uni">
+            <input id="ventana_dias" name="ventana_dias" value="{{ valores.ventana_dias or '' }}"
+                   inputmode="numeric" placeholder="{{ ventana_default }}">
+            <span class="campo-uni__u">días</span>
+          </div>
+          {% if errors.ventana_dias %}<p class="field__err">{{ errors.ventana_dias }}</p>{% endif %}
+        </div>
+      </div>
+
+      <details class="ayuda">
+        <summary class="ayuda__q">
+          {{ icon('chevron-right', 14) }}
+          Cuál precio creer cuando hay varias compras
+        </summary>
+        <div class="ayuda__b">
+          <p>
+            {% for value, ayuda in METODO_AYUDA.items() %}{% if valores.metodo_costeo == value %}{{ ayuda }}{% endif %}{% endfor %}
+          </p>
+          <p>
+            La ventana es cuánto hacia atrás mirar. En blanco usa
+            {{ ventana_default }} días y sigue el ajuste global si este
+            cambia, en vez de congelarse en el valor que había hoy.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="bloque__h">
+        <span class="bloque__ico">{{ icon('note') }}</span>
+        <h2 class="card__h">Notas</h2>
+      </div>
+
+      <div class="rejilla">
+        <div class="field field--todo">
+          <textarea id="notas" aria-label="Notas" name="notas" rows="3">{{ valores.notas or '' }}</textarea>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <div class="field">
-    <label for="merma_pct">% de merma</label>
-    <input class="input input--sm {% if errors.merma_pct %}input--bad{% endif %}"
-           id="merma_pct" name="merma_pct" value="{{ valores.merma_pct or '0' }}" inputmode="decimal">
-    {% if errors.merma_pct %}<p class="field__error">{{ errors.merma_pct }}</p>{% endif %}
-    <p class="field__hint">
-      Cuánto se pierde al preparar — hueso, cáscara, recorte. A ₡4 000 el
-      kilo con 12% de merma, el kilo usable cuesta ₡4 545. Es una propiedad
-      del insumo, no de cada receta.
-    </p>
-  </div>
-
-  <div class="field">
-    <label for="metodo_costeo">Método de costeo</label>
-    <select class="input" id="metodo_costeo" name="metodo_costeo">
-      <option value="">Usar el de Ajustes — {{ METODO_LABELS.get(metodo_default) }}</option>
-      {% for value, label in METODO_LABELS.items() %}
-      <option value="{{ value }}" {% if valores.metodo_costeo == value %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    {% if errors.metodo_costeo %}<p class="field__error">{{ errors.metodo_costeo }}</p>{% endif %}
-    <p class="field__hint">
-      Cuál precio creer cuando hay varias compras.
-      {% for value, ayuda in METODO_AYUDA.items() %}{% if valores.metodo_costeo == value %}{{ ayuda }}{% endif %}{% endfor %}
-    </p>
-  </div>
-
-  <div class="field">
-    <label for="ventana_dias">Ventana (días)</label>
-    <input class="input input--sm {% if errors.ventana_dias %}input--bad{% endif %}"
-           id="ventana_dias" name="ventana_dias" value="{{ valores.ventana_dias or '' }}"
-           inputmode="numeric" placeholder="{{ ventana_default }}">
-    {% if errors.ventana_dias %}<p class="field__error">{{ errors.ventana_dias }}</p>{% endif %}
-    <p class="field__hint">Cuánto hacia atrás mirar. En blanco usa {{ ventana_default }} días.</p>
-  </div>
-
-  <div class="field">
-    <label for="categoria_slug">Categoría</label>
-    <select class="input" id="categoria_slug" name="categoria_slug">
-      <option value="">— sin categoría —</option>
-      {% for slug in categorias %}
-      <option value="{{ slug }}" {% if valores.categoria_slug == slug %}selected{% endif %}>{{ slug }}</option>
-      {% endfor %}
-    </select>
-    <p class="field__hint">Las que trae el catálogo de restaurant-manager.</p>
-  </div>
-
-  <div class="field">
-    <label for="notas">Notas</label>
-    <textarea class="input" id="notas" name="notas" rows="2">{{ valores.notas or '' }}</textarea>
-  </div>
-
-  <div class="actions">
-    <button class="btn" type="submit">{{ 'Guardar' if editando else 'Crear insumo' }}</button>
+  <div class="form__pie">
+    <button class="btn btn--solid" type="submit">{{ icon('check') }} {{ 'Guardar' if editando else 'Crear insumo' }}</button>
     <a class="btn btn--ghost" href="{{ '/insumos/' ~ insumo.id if editando else '/insumos' }}">Cancelar</a>
   </div>
 </form>

@@ -37,12 +37,25 @@ services:
     # restaurant-manager runs in its *own* Compose project on this same
     # machine, so it is not on this network -- it is reachable only via the
     # host port it publishes (127.0.0.1:8000). This mapping is what makes
-    # UPSTREAM_API_URL=http://host.docker.internal:8000/api/v1 resolve from
+    # UPSTREAM_API_URL=http://host.docker.internal:8000/api/v2 resolve from
     # inside this container on Linux; Docker Desktop provides it natively.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/data
+    # Schema first, then the app (2026-09-07). Spelled out here rather than
+    # hidden in an entrypoint script so that "what runs before uvicorn" is
+    # visible in the file the operator actually opens. `create_all` is gone
+    # and there is no `init_db`, so this is now the only thing that builds
+    # the schema -- on a fresh database it applies the baseline and every
+    # migration after it; on the existing one it applies whatever is not
+    # yet in `alembic_version` and is a no-op when nothing is pending.
+    #
+    # `--reload` stays: this is a development-shaped deployment on the
+    # restaurant's own machine, and uvicorn reloading does NOT re-run the
+    # migration -- only a container restart does. A migration added while
+    # the stack is up needs `docker compose up -d --build web`.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     # 8001, not 8000 -- restaurant-manager holds that one. Bound to
     # localhost. There is no auth: do NOT port-forward this to the internet.
     ports:

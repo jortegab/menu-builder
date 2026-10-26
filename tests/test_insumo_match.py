@@ -103,7 +103,7 @@ class TestResolveFactor(unittest.TestCase):
     def test_description_wins(self):
         factor, origen = m.resolve_factor(
             descripcion="PECHUGA DESHUESADA 1/5KG", unidad_base="g",
-            unidad_medida="Unid", categoria_slug="insumos_pollo",
+            unidad_medida="Unid", categoria_slug="alimentos_pollo",
         )
         self.assertEqual(factor, Decimal(5000))
         self.assertEqual(origen, "descripcion")
@@ -119,7 +119,7 @@ class TestResolveFactor(unittest.TestCase):
         # The operator's own rule: meats, chicken and seafood are in kg.
         factor, origen = m.resolve_factor(
             descripcion="POSTA CERDO", unidad_base="g",
-            unidad_medida="Unid", categoria_slug="insumos_cerdo",
+            unidad_medida="Unid", categoria_slug="alimentos_cerdo",
         )
         self.assertEqual(factor, Decimal(1000))
         self.assertEqual(origen, "default_categoria")
@@ -129,7 +129,7 @@ class TestResolveFactor(unittest.TestCase):
         # would silently cost the insumo per package.
         factor, origen = m.resolve_factor(
             descripcion="TORTILLA PEQUENA BLANCA", unidad_base="g",
-            unidad_medida="Otros", categoria_slug="insumos_abarrotes",
+            unidad_medida="Otros", categoria_slug="alimentos_abarrotes",
         )
         self.assertIsNone(factor)
         self.assertEqual(origen, "sin_resolver")
@@ -143,7 +143,7 @@ class TestResolveFactor(unittest.TestCase):
 
     def test_category_default_does_not_apply_to_volume(self):
         factor, origen = m.resolve_factor(
-            descripcion="ACEITE", unidad_base="ml", categoria_slug="insumos_carnes"
+            descripcion="ACEITE", unidad_base="ml", categoria_slug="alimentos_carnes"
         )
         self.assertIsNone(factor)
         self.assertEqual(origen, "sin_resolver")
@@ -193,6 +193,25 @@ class TestTokens(unittest.TestCase):
         # Only a *leading* digit means quantity. "41-50" is a shrimp size
         # grade and normalizes to two numbers, both dropped; the name stays.
         self.assertEqual(m.tokens_significativos("CAMARON 41-50"), ["camaron"])
+
+    def test_drops_plural_packaging_words(self):
+        # "caja" was in the noise set and "cajas" was not, so the plural
+        # survived as if it said something about the ingredient. Every noun
+        # in the set now carries its plural.
+        self.assertEqual(
+            m.tokens_significativos("OSOBUCO PICADO, CAJAS 3KG APROX (P/KG)"),
+            ["osobuco", "picado"],
+        )
+        self.assertEqual(
+            m.tokens_significativos("TOMATE BOLSAS 2KG"), ["tomate"]
+        )
+
+    def test_drops_single_letter_debris(self):
+        # "P/KG", "C/U" and "S/" leave a bare letter behind once punctuation
+        # is stripped. 175 of them survive across the live catalog, and on a
+        # short description they inflate the set the overlap divides by.
+        self.assertEqual(m.tokens_significativos("LOMITO P/KG"), ["lomito"])
+        self.assertEqual(m.tokens_significativos("QUESO C/U"), ["queso"])
 
 
 class TestSimilitud(unittest.TestCase):
@@ -248,6 +267,18 @@ class TestConflictos(unittest.TestCase):
 
     def test_conflict_is_symmetric(self):
         self.assertEqual(m.similitud("Pechuga deshuesada", "PECHUGA CON HUESO"), 0.0)
+
+    def test_packaging_noise_does_not_hide_a_real_pair(self):
+        # Reported from a live session: the two osobucos were never even
+        # offered as the same insumo. `cajas` and the `p` left by `(P/KG)`
+        # survived tokenising, so the Jaccard overlap divided by four
+        # instead of two and the pair scored 0.320 -- under `parecidos`'s
+        # 0.35 floor.
+        score = m.similitud("OSOBUCO", "OSOBUCO PICADO, CAJAS 3KG APROX (P/KG)")
+        self.assertGreaterEqual(score, 0.35)
+        # PICADO is a real qualifier, so this is offered for a person to
+        # decide -- not pre-ticked. Both halves of that matter.
+        self.assertLess(score, 0.70)
 
 
 class TestMejorMatch(unittest.TestCase):

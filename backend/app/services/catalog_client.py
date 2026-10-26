@@ -1,4 +1,4 @@
-"""HTTP client for `restaurant-manager`'s `/api/v1`. Network only -- it
+"""HTTP client for `restaurant-manager`'s `/api/v2`. Network only -- it
 knows how to *fetch* the catalog and nothing about what this app does with
 it, the same way upstream keeps `gmail.py` (network) apart from
 `gmail_match.py` (logic).
@@ -45,11 +45,27 @@ class ContractMismatch(RuntimeError):
     """
 
 
-# The major version of `/api/v1` this app is written against. Upstream may
-# add fields freely -- those bump its minor revision and are ignored here
-# (we read the keys we know) -- but a change in meaning gets a new major,
-# and that is what this refuses.
-SUPPORTED_MAJOR = 1
+# The major version this app is written against. Upstream may add fields
+# freely -- those bump its minor revision and are ignored here (only the
+# known keys are read) -- but a change in meaning gets a new major, and
+# that is what this refuses.
+#
+# **Moved 1 -> 2 on 2026-09-08**, when upstream published `/api/v2`. The
+# only difference is that `/proveedores` no longer carries `es_servicios`,
+# a boolean replaced upstream by `role` (producto | servicio |
+# gasto_fijo). This app never read that field -- it calls `/version`,
+# `/categorias`, `/productos` and `/productos/{id}/compras`, and
+# `/proveedores` not at all -- so nothing here parses differently. The
+# bump declares which contract we speak; it is not a payload change we
+# had to absorb.
+#
+# **Upgrade order matters, in one direction only.** This refuses a server
+# whose major it does not recognise, so restaurant-manager must already be
+# serving v2 before this app is pointed at it. The reverse is safe: an
+# older menu-builder keeps working against a newer server, because v1 is
+# still served and unchanged. That asymmetry is the whole reason upstream
+# added a path instead of editing v1.
+SUPPORTED_MAJOR = 2
 
 
 class CatalogClient:
@@ -105,6 +121,12 @@ class CatalogClient:
                 f"antes de sincronizar."
             )
         return payload
+
+    def categorias(self) -> dict:
+        """Upstream's category tree. Small, unpaginated, and refetched whole
+        on every sync -- it is a few dozen rows and the names change so
+        rarely that a watermark would cost more than it saves."""
+        return self._get("/categorias")
 
     def productos(
         self,

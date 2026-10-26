@@ -210,19 +210,19 @@ class TestCounts(DbTestCase):
         self.assertEqual(svc.fuente_counts(self.db, []), {})
 
     def test_categorias_come_from_the_mirror(self):
-        # Never a hardcoded copy of upstream's taxonomy -- it just changed
-        # underneath us (alimentos_* -> insumos_*).
+        # Never a hardcoded copy of upstream's taxonomy -- it has changed
+        # twice already (alimentos_* -> insumos_* -> alimentos_*).
         self.db.add_all([
             CatalogProduct(internal_code="1-a", upstream_product_id=1, supplier_id=1,
-                           supplier_nombre="X", description="A", categoria_slug="insumos_carnes"),
+                           supplier_nombre="X", description="A", categoria_slug="alimentos_carnes"),
             CatalogProduct(internal_code="1-b", upstream_product_id=2, supplier_id=1,
-                           supplier_nombre="X", description="B", categoria_slug="insumos_verduras"),
+                           supplier_nombre="X", description="B", categoria_slug="alimentos_verduras"),
             CatalogProduct(internal_code="1-c", upstream_product_id=3, supplier_id=1,
-                           supplier_nombre="X", description="C", categoria_slug="insumos_carnes"),
+                           supplier_nombre="X", description="C", categoria_slug="alimentos_carnes"),
         ])
         self.db.commit()
         self.assertEqual(
-            svc.categorias_disponibles(self.db), ["insumos_carnes", "insumos_verduras"]
+            svc.categorias_disponibles(self.db), ["alimentos_carnes", "alimentos_verduras"]
         )
 
 

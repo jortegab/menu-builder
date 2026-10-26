@@ -2,7 +2,7 @@
 
 1. **The catalog mirror** (`catalog_*`) -- a projection of
    restaurant-manager's product catalog and price history, pulled through
-   its read-only `/api/v1`. Derived, disposable, rebuildable by re-syncing,
+   its read-only `/api/v2`. Derived, disposable, rebuildable by re-syncing,
    and **never hand-edited** (non-negotiable #3). Nothing in this app may
    hold data that exists only here.
 2. **Insumos** -- the canonical, cross-supplier ingredient layer upstream
@@ -260,8 +260,8 @@ class InsumoFuente(Base):
     mapping_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
 
     # A confirmed source can be switched off without losing the mapping --
-    # a supplier you stopped buying from should stop moving the cost without
-    # the operator having to re-map them if they come back.
+    # a supplier the restaurant stopped buying from should stop moving the
+    # cost, without needing a re-map if they come back.
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[dt.datetime] = _now()
@@ -289,7 +289,7 @@ class InsumoFuente(Base):
 class InsumoMapeoRechazo(Base):
     """A suggestion the operator rejected. Remembered so the same wrong
     grouping is not proposed again on the next sync -- a queue that
-    re-offers what you already said no to stops being drained.
+    re-offers what the operator already said no to stops being drained.
     """
 
     __tablename__ = "insumo_mapeo_rechazo"
@@ -304,6 +304,38 @@ class InsumoMapeoRechazo(Base):
     __table_args__ = (
         UniqueConstraint("catalog_product_id", "insumo_id", name="uq_rechazo_producto_insumo"),
     )
+
+
+class CatalogDescarte(Base):
+    """A catalog product the operator says is **not an ingredient at all** --
+    the bulk gate in front of the mapping queue (DESIGN.md §3.7).
+
+    A large share of a 1 420-product catalog will never be an insumo:
+    `CLORO ECONOMICO MFS 1/1 GL`, `CREMA LAVAPLATOS LIMON NIT 1/1KG`,
+    `VINAGRE BLANCO MFS 1/1 GAL`. Marching those through a one-at-a-time
+    queue is a punishment, so a whole filtered set can be dismissed at once.
+
+    **This is a separate table and not `CatalogProduct.ignored`, and that is
+    not a style choice.** `ignored` is upstream's own flag: `catalog_sync`
+    overwrites it from the payload on every run, so a local write there
+    would be silently reverted by the next sync -- and it would break
+    non-negotiable #3, which says the mirror is derived, disposable and
+    never hand-edited. A local decision *about* a mirrored row lives
+    outside the mirror, exactly as `InsumoMapeoRechazo` already does.
+
+    `lote` groups one bulk action so it can be undone as one: dismissing
+    four hundred rows is the kind of thing that should be reversible by the
+    person who just did it, without hunting them down individually.
+    """
+
+    __tablename__ = "catalog_descarte"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    catalog_product_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_product.id"), index=True, unique=True
+    )
+    lote: Mapped[str] = mapped_column(String(40), index=True)
+    created_at: Mapped[dt.datetime] = _now()
 
 
 # --------------------------------------------------------------------------
@@ -452,7 +484,13 @@ class AppSetting(Base):
 
     __tablename__ = "app_setting"
 
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    # `autoincrement=False` is explicit because this table has exactly one
+    # row and a sequence behind it would be a lie. `create_all` inferred
+    # that on its own from the Python-side `default=1`; Alembic's
+    # `op.create_table` cannot see that default and made it a SERIAL, which
+    # is how a fresh install came out shaped differently from production.
+    # Saying it here is what keeps the two agreeing.
+    id: Mapped[int] = mapped_column(primary_key=True, default=1, autoincrement=False)
     metodo_costeo_default: Mapped[str] = mapped_column(
         String(30), default="median_window"
     )
@@ -460,6 +498,91 @@ class AppSetting(Base):
     upstream_api_url: Mapped[str | None] = mapped_column(String(300))
     moneda: Mapped[str] = mapped_column(String(3), default="CRC")
     llm_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # What the mapping queue is scoped to. These were two checkboxes on
+    # `/insumos/mapeo` itself, which made a decision about app policy look
+    # like a per-visit choice -- and put a filter the operator could flip
+    # by accident in front of a bulk dismissal that names its own size.
+    # `mapeo_dias_reciente` is 0 for "no date limit"; it also gets the
+    # literal 180 out of the service, which is PLAN.md §15's rule.
+    mapeo_solo_receta: Mapped[bool] = mapped_column(Boolean, default=True)
+    mapeo_dias_reciente: Mapped[int] = mapped_column(Integer, default=180)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class CatalogAgrupacion(Base):
+    """A record that one pending product has *been through* the grouping
+    pass -- not what the pass found, which is `CatalogParecido`.
+
+    The two are separate because "no look-alikes" and "never looked" are
+    different answers and the queue has to tell them apart. Without this
+    row, an anchor with no pairs would be indistinguishable from one the
+    precompute has not reached yet, and the card would either fall back to
+    a billed LLM call forever or silently claim a product is unique when
+    nobody has checked.
+    """
+
+    __tablename__ = "catalog_agrupacion"
+
+    catalog_product_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_product.id"), primary_key=True
+    )
+    computed_at: Mapped[dt.datetime] = _now()
+
+
+class CatalogParecido(Base):
+    """One "these two are probably the same insumo" pair, precomputed.
+
+    **Pairs, not a cluster id.** A product legitimately appears in as many
+    rows as it has look-alikes, which is an adjacency list rather than
+    duplication: it is the same shape `parecidos` computed live, so storing
+    it changes what the queue *costs* and not what it *offers*.
+
+    Like `CatalogDescarte` and `InsumoMapeoRechazo`, this is a local
+    decision about mirrored rows and therefore lives outside the mirror
+    (non-negotiable #3). It is also pure cache -- deleting every row costs
+    one grouping pass and nothing else, which is why it carries no
+    operator input and nothing reads it as evidence.
+
+    Stored in both directions. The queue looks up one anchor at a time, and
+    a single-direction table would make "who else is like me?" a query that
+    has to union two columns on every card render.
+    """
+
+    __tablename__ = "catalog_parecido"
+
+    anchor_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_product.id"), primary_key=True
+    )
+    miembro_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_product.id"), primary_key=True
+    )
+    # "seguro" pre-ticks the checkbox, "posible" does not -- the same rule
+    # the live path applied, kept here so a cached row and a fresh one are
+    # read identically.
+    certeza: Mapped[str] = mapped_column(String(10), default="posible")
+    computed_at: Mapped[dt.datetime] = _now()
+
+
+class CatalogCategoria(Base):
+    """Upstream's category names, mirrored so the UI can say "Verduras"
+    instead of `alimentos_verduras`.
+
+    Part of the catalog mirror and disposable with the rest of it
+    (non-negotiable #3): rebuilt from `/api/v2/categorias` on every sync,
+    never hand-edited, and nothing lives only here. A slug with no row is
+    rendered as the slug itself rather than as an error -- the taxonomy is
+    upstream's and it may add a leaf between syncs.
+
+    The name is not derivable from the slug and should not be guessed at:
+    `alimentos_panaderia_postres` is "Panadería y postres", with an accent
+    and a conjunction no amount of title-casing produces.
+    """
+
+    __tablename__ = "catalog_categoria"
+
+    slug: Mapped[str] = mapped_column(String(60), primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(80))
+    parent_slug: Mapped[str | None] = mapped_column(String(60), index=True)
+    updated_at: Mapped[dt.datetime] = _now()

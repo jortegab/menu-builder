@@ -144,3 +144,122 @@ def svg(puntos: list[Punto]) -> str | None:
         f"{''.join(segmentos)}{marcas}{etiquetas}"
         f"</svg>"
     )
+
+
+# ── la chispa del tablero (DESIGN.md §3.6) ────────────────────────────────
+_SPARK_ANCHO = 120
+_SPARK_ALTO = 26
+
+
+def variacion_ventana(valores: list[Decimal]) -> Decimal | None:
+    """Percentage move across the **whole series**: first against last.
+
+    Deliberately not `variacion`, which compares the last two points. The
+    two answer different questions and the difference is not cosmetic: the
+    history stores one point per day and rides the catalog sync, so
+    yesterday-against-today is almost always exactly 0 even for a plate
+    that has drifted 9% over the quarter. `variacion` is right for the
+    histórico card, which is showing a series already on screen;
+    this is right for the board, whose question is "which plates have
+    moved?"
+
+    `None` when there is nothing to compare -- fewer than two points, or a
+    base that is not positive, for the same reason `variacion` refuses it.
+    """
+    if len(valores) < 2:
+        return None
+    base, ultimo = valores[0], valores[-1]
+    if base <= 0:
+        return None
+    return (ultimo - base) / base * Decimal(100)
+
+
+def spark(valores: list[Decimal]) -> str | None:
+    """A bare sparkline: one polyline, no axes, no labels, no markers.
+
+    Returns None with fewer than two points, and **None when the series is
+    flat**, which is the case that matters. Today's real history is 27
+    identical points per receta -- four insumos with stable prices produce
+    a straight line -- and nine cards each drawing a flat line is nine
+    pieces of ink saying nothing, which teaches the operator to stop
+    looking. The card decides *whether* to ask for one by its own
+    threshold; this refuses the degenerate case regardless, so a flat line
+    can never be drawn by any caller.
+
+    The *presence* of a sparkline is therefore itself the signal (§3.6).
+    """
+    if len(valores) < 2:
+        return None
+    v_min, v_max = min(valores), max(valores)
+    if v_max == v_min:
+        return None
+
+    paso = _SPARK_ANCHO / (len(valores) - 1)
+    puntos = " ".join(
+        f"{i * paso:.1f},"
+        f"{_SPARK_ALTO - float((v - v_min) / (v_max - v_min)) * _SPARK_ALTO:.1f}"
+        for i, v in enumerate(valores)
+    )
+    return (
+        f'<svg viewBox="0 0 {_SPARK_ANCHO} {_SPARK_ALTO}" class="spark" '
+        f'preserveAspectRatio="none" role="img" aria-hidden="true">'
+        f'<polyline points="{puntos}" class="spark__line" /></svg>'
+    )
+
+
+# ── la barra de composición (DESIGN.md §3.3) ──────────────────────────────
+# Twelve categorical colours, reused from restaurant-manager's palette
+# rather than invented here (D37). That set was arrived at by an actual
+# CVD-constrained search -- upstream's app.css records the deltaE figures --
+# so a second palette would be both wasteful and measurably worse.
+#
+# These are custom-property NAMES, not hex. Unlike upstream's charts (which
+# feed Chart.js through a canvas, where var() does not resolve and the token
+# has to be looked up in JS) this bar is plain HTML: `background: var(--chart-cat-3)`
+# in an inline style resolves against :root like any other declaration. So
+# the one place the colours are written down stays app.css.
+_CAT = tuple(f"--chart-cat-{n}" for n in range(1, 13))
+
+
+@dataclass(frozen=True)
+class Segmento:
+    """One line's share of a receta's cost, as the bar draws it."""
+
+    nombre: str
+    costo: Decimal
+    pct: Decimal
+    color: str  # a CSS custom-property name, e.g. "--chart-cat-3"
+
+
+def composicion(pares: list[tuple[str, Decimal | None]]) -> list[Segmento]:
+    """Cost share per line, in **recipe order**.
+
+    Deliberately not sorted by size. The order of a receta's lines is the
+    order the kitchen works in, the drag handle exists to change it, and a
+    bar that reordered itself under the rows it labels would be unreadable.
+
+    Since DESIGN.md D39 this is the *only* expression of cost share on the
+    builder -- there is no per-row fill and no `%` column any more, because
+    three renderings of one fact is two too many. That makes this function
+    load-bearing rather than decorative: if it returns nothing, the screen
+    stops answering "what is actually expensive here", which §10.1 says is
+    the question it exists for.
+
+    A line with no cost contributes no segment and is not an error: an
+    insumo with no usable price has no cost (non-negotiable #7), the receta
+    is already flagged `incompleto`, and the banner names it. Its share is
+    genuinely unknown, and a zero-width segment would claim it is nothing.
+    """
+    con_costo = [(n, c) for n, c in pares if c is not None]
+    total = sum((c for _, c in con_costo), Decimal("0"))
+    if total <= 0:
+        return []
+    return [
+        Segmento(
+            nombre=nombre,
+            costo=costo,
+            pct=(costo / total * 100).quantize(Decimal("0.1")),
+            color=_CAT[i % len(_CAT)],
+        )
+        for i, (nombre, costo) in enumerate(con_costo)
+    ]

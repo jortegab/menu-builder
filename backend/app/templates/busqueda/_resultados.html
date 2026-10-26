@@ -1,0 +1,25 @@
+{#- The results list. Rendered inside the Ctrl-K sheet and inside the
+    plain `/buscar` page, from the same context -- one render path, so the
+    keystroke and the link can never disagree about what matched. -#}
+<div id="buscar-hits">
+  {% if hits %}
+  <ul class="hits">
+    {% for h in hits %}
+    <li>
+      {#- The first result is what Enter follows, so it carries the id.
+          Every result is a real <a>: with no JavaScript this list is still
+          a list of links that work. -#}
+      <a class="hit" href="{{ h.url }}" {% if loop.first %}id="hit-primero"{% endif %}>
+        <span class="hit__n">{{ h.nombre }}</span>
+        <span class="hit__t">{{ h.tipo }}</span>
+        {% if h.detalle %}<span class="hit__d">{{ h.detalle }}</span>{% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif q %}
+  <p class="empty">Nada se llama «{{ q }}».</p>
+  {% else %}
+  <p class="empty">Escribí el nombre de un plato, una preparación o un insumo.</p>
+  {% endif %}
+</div>

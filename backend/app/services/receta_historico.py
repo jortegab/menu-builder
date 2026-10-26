@@ -235,3 +235,52 @@ def _valor_fila(receta: Receta, fila: RecetaCostoHistorico) -> Decimal | None:
     if receta.tipo == "plato":
         return fila.costo_por_porcion
     return fila.costo_total
+
+
+# How much a plate has to have moved across its stored window before the
+# board draws its line. Below this the card shows the figure alone, and the
+# *presence* of a sparkline is what says something happened (§3.6).
+UMBRAL_TABLERO = Decimal("2")
+
+
+def resumen_muchas(
+    db: Session, recetas: list[Receta], *, umbral: Decimal = UMBRAL_TABLERO
+) -> dict[int, dict]:
+    """Per-receta `{variacion, spark}` for the menu board, in ONE query.
+
+    The per-receta `tarjeta` would be a query apiece, which is forty on a
+    real menu -- the same reason `receta_costs.costear_muchas` exists. This
+    reads every history row for the whole list at once and groups in
+    Python.
+
+    The sparkline is drawn only when the window variación clears `umbral`.
+    That is not decoration policy, it is signal policy: today's real data
+    is 27 identical points per receta, and nine flat lines are nine pieces
+    of ink saying nothing. `cost_chart.spark` refuses a flat series anyway,
+    so this threshold only ever removes lines that would be technically
+    non-flat and practically noise.
+    """
+    if not recetas:
+        return {}
+    por_id = {r.id: r for r in recetas}
+    filas = db.scalars(
+        select(RecetaCostoHistorico)
+        .where(RecetaCostoHistorico.receta_id.in_(list(por_id)))
+        .order_by(RecetaCostoHistorico.receta_id, RecetaCostoHistorico.fecha)
+    )
+
+    series: dict[int, list[Decimal]] = {}
+    for fila in filas:
+        valor = _valor_fila(por_id[fila.receta_id], fila)
+        if valor is not None:
+            series.setdefault(fila.receta_id, []).append(valor)
+
+    out: dict[int, dict] = {}
+    for rid, valores in series.items():
+        var = cost_chart.variacion_ventana(valores)
+        out[rid] = {
+            "variacion": var,
+            "puntos": len(valores),
+            "spark": cost_chart.spark(valores) if var is not None and abs(var) >= umbral else None,
+        }
+    return out

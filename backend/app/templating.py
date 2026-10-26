@@ -12,6 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 
 _HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
@@ -69,10 +70,10 @@ METODO_LABELS = {
 METODO_AYUDA = {
     "last": "Lo que costaría cocinarlo hoy. El más intuitivo y el más brincón.",
     "avg_window": "Promedio simple de la ventana.",
-    "weighted_avg_window": "Promedio pesado por cantidad: lo que de verdad pagaste en promedio.",
+    "weighted_avg_window": "Promedio pesado por cantidad: lo que de verdad se pagó en promedio.",
     "median_window": "El precio típico. No se deja llevar por una factura rara.",
     "max_window": "El peor caso reciente. Para costear conservador.",
-    "min_window": "El mejor caso reciente. Casi nunca es lo que querés.",
+    "min_window": "El mejor caso reciente. Casi nunca es lo que conviene.",
 }
 
 # The base units an insumo may be *costed* in -- the canonical unit of each
@@ -132,3 +133,43 @@ def pendientes_mapeo(request) -> int:
 
 
 templates.env.globals["pendientes_mapeo"] = pendientes_mapeo
+
+
+def categoria_nombre(request, slug: str | None) -> str:
+    """Upstream's display name for a category slug -- «Verduras», not
+    `alimentos_verduras`.
+
+    The whole map is loaded once and cached on `request.state`, because the
+    callers are lists: a per-slug query would be one round trip per row on
+    `/insumos`, for a table of a few dozen names that never changes within a
+    request.
+
+    **Falls back to the slug**, never to an error or an empty pill. The
+    taxonomy is upstream's and it may add a leaf between syncs, so an
+    unknown slug means "not synced yet", not "broken" -- and showing the raw
+    slug is exactly what this replaces, so the failure mode is the old
+    behaviour rather than a blank.
+    """
+    if not slug:
+        return ""
+    estado = getattr(request, "state", None)
+    mapa = getattr(estado, "_categorias", None)
+    if mapa is None:
+        db = getattr(estado, "db", None)
+        if db is None:
+            return slug
+        try:
+            from .models import CatalogCategoria
+
+            mapa = {
+                fila.slug: fila.nombre
+                for fila in db.scalars(select(CatalogCategoria))
+            }
+        except Exception:  # pragma: no cover - a label must never 500 a page
+            mapa = {}
+        if estado is not None:
+            estado._categorias = mapa
+    return mapa.get(slug, slug)
+
+
+templates.env.globals["categoria_nombre"] = categoria_nombre

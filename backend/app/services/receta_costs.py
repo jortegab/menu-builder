@@ -28,7 +28,7 @@ Three things worth knowing before touching it:
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -275,3 +275,99 @@ def lineas_por_id(db: Session, receta: Receta) -> dict[int, RecetaLinea]:
             .order_by(RecetaLinea.orden, RecetaLinea.id)
         )
     }
+
+
+# ── el modo simulador (DESIGN.md §3.9, D42) ───────────────────────────────
+
+
+@dataclass
+class Simulacion:
+    """What a "what if" is worth, and what it would drag with it.
+
+    `afectadas` is only ever populated for a preparación, and it is the
+    reason this dataclass exists rather than the route just returning a
+    `Costeo`: changing a salsa's quantities changes every plato that uses
+    it, and "this salsa gets 8% cheaper" is not the decision anyone is
+    actually making. "These four plates get cheaper by these amounts" is.
+    """
+
+    actual: Costeo
+    simulada: Costeo
+    # (receta, su costo hoy, su costo con el cambio), for a preparación.
+    afectadas: list[tuple[Receta, Costeo, Costeo]]
+
+
+def _grafo_con(grafo: dict[int, graph.Receta], cantidades: dict[int, Decimal]) -> dict:
+    """A copy of the graph with some line quantities substituted.
+
+    **This is the whole simulator, and it is why there is no second costing
+    engine** (D16, the non-negotiable most at risk from "make it more
+    interactive"). `costear` already accepts an injected `grafo`; the
+    "what if" is that graph with different numbers in it, costed by exactly
+    the same `graph.cost_recipe` that costs the real thing. No branch in
+    the arithmetic, no parallel implementation, and nothing in the browser.
+
+    Everything here is a frozen dataclass, so `replace` builds new objects
+    and the loaded graph is not mutated -- which matters because the caller
+    costs the *unmodified* graph too, to show both numbers side by side.
+    """
+    salida: dict[int, graph.Receta] = {}
+    for rid, receta in grafo.items():
+        lineas = [
+            replace(ln, cantidad=cantidades[ln.linea_id])
+            if ln.linea_id is not None and ln.linea_id in cantidades
+            else ln
+            for ln in receta.lineas
+        ]
+        salida[rid] = replace(receta, lineas=lineas)
+    return salida
+
+
+def simular(
+    db: Session,
+    receta: Receta,
+    cantidades: dict[int, Decimal],
+    *,
+    ajustes=None,
+    hoy: dt.date | None = None,
+) -> Simulacion:
+    """Cost `receta` as if those lines had those quantities. **Writes
+    nothing.**
+
+    Not "writes nothing if used carefully": there is no write path in
+    here to get wrong. The substitution happens on in-memory dataclasses
+    between `cargar_grafo` and `graph.cost_recipe`, so no `RecetaLinea` is
+    touched, no transaction is opened, and `receta_costo_historico` --
+    which reads committed rows and rides the catalog sync -- is
+    structurally incapable of seeing any of it. A simulated cost landing in
+    that table would be a wrong number that looks exactly like a right one,
+    which is the precise failure this whole design exists to prevent.
+    """
+    grafo = cargar_grafo(db)
+    grafo_sim = _grafo_con(grafo, cantidades)
+    cache: dict[int, CostResult] = {}
+
+    actual = costear(db, receta, ajustes=ajustes, hoy=hoy, grafo=grafo, cache=cache)
+    simulada = costear(db, receta, ajustes=ajustes, hoy=hoy, grafo=grafo_sim, cache=cache)
+
+    afectadas: list[tuple[Receta, Costeo, Costeo]] = []
+    if receta.tipo == "preparacion":
+        consumidores = list(
+            db.scalars(
+                select(Receta)
+                .join(RecetaLinea, RecetaLinea.receta_id == Receta.id)
+                .where(RecetaLinea.componente_receta_id == receta.id)
+                .distinct()
+                .order_by(Receta.nombre)
+            )
+        )
+        for otra in consumidores:
+            afectadas.append(
+                (
+                    otra,
+                    costear(db, otra, ajustes=ajustes, hoy=hoy, grafo=grafo, cache=cache),
+                    costear(db, otra, ajustes=ajustes, hoy=hoy, grafo=grafo_sim, cache=cache),
+                )
+            )
+
+    return Simulacion(actual=actual, simulada=simulada, afectadas=afectadas)

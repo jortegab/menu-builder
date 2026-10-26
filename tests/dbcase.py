@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from fastapi import Request
@@ -38,11 +39,36 @@ from sqlalchemy.pool import StaticPool
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.models import Base  # noqa: E402
-from app.services.catalog_client import CatalogUnavailable  # noqa: E402
+from app.services.catalog_client import (  # noqa: E402
+    SUPPORTED_MAJOR,
+    CatalogUnavailable,
+)
 
 
 class DbTestCase(unittest.TestCase):
     def setUp(self) -> None:
+        # **No test may reach the Anthropic API, and none may depend on
+        # whether a key happens to be configured.**
+        #
+        # Found the hard way, 2026-09-06: the moment a real key landed in
+        # `.env`, four tests started failing and the whole suite started
+        # making billed network calls -- `mapeo.sugerir` calls Claude, and
+        # `test_routes_smoke` renders the mapping queue. A unit test that
+        # costs money and answers differently depending on the environment
+        # is not a unit test.
+        #
+        # Stubbed here rather than per-module because "the suite is
+        # hermetic" is a property of the whole suite. A test that genuinely
+        # wants the LLM shape re-patches `sugerir` with its own fake.
+        from app.services import llm_insumo
+
+        for nombre, valor in (("sugerir", None), ("disponible", False)):
+            parche = mock.patch.object(
+                llm_insumo, nombre, return_value=valor, autospec=True
+            )
+            parche.start()
+            self.addCleanup(parche.stop)
+
         # Several tests exercise degraded paths on purpose (upstream down,
         # an unparseable price); muting keeps a passing run readable, and
         # `assertLogs` still works where a test asserts on a warning.
@@ -107,19 +133,49 @@ class FakeCatalogClient:
         productos: list[dict] | None = None,
         compras: dict[int, list[dict]] | None = None,
         *,
-        api: str = "1.0",
+        # Tracks the contract this app declares rather than pinning a
+        # literal: hardcoding "1.0" meant every sync test refused the
+        # moment SUPPORTED_MAJOR moved to 2, which is a fixture drifting
+        # from the code, not a real failure. A test that wants a
+        # *mismatch* passes one explicitly.
+        api: str = f"{SUPPORTED_MAJOR}.0",
         fail_on: str | None = None,
+        categorias: list[dict] | None = None,
     ) -> None:
         self._productos = productos or []
         self._compras = compras or {}
         self._api = api
         self._fail_on = fail_on  # "version" | "productos" | "compras"
-        self.calls: dict[str, int] = {"version": 0, "productos": 0, "compras": 0}
+        self.calls: dict[str, int] = {
+            "version": 0, "productos": 0, "compras": 0, "categorias": 0,
+        }
         self.productos_params: list[dict] = []
+        # Upstream's category names, in upstream's own shape -- the parent
+        # is an `id` reference, NOT a slug, and the family row travels with
+        # its children so that reference resolves. This fake said
+        # `parent_slug` until 2026-09-07 and upstream has never sent that
+        # key: the mirror's `parent_slug` column was NULL on all 36 live
+        # rows while the suite happily asserted otherwise. A fake that
+        # invents a friendlier payload than the real one is worse than no
+        # fake at all, which is the whole reason the client and the sync
+        # are separate modules.
+        #
+        # Defaults to the family the fixtures use plus its two leaves, so a
+        # test that does not care about labels needs no setup.
+        self.categorias_items: list[dict] = categorias or [
+            {"id": 1, "slug": "alimentos", "nombre": "Alimentos", "parent_id": None},
+            {"id": 2, "slug": "alimentos_verduras", "nombre": "Verduras", "parent_id": 1},
+            {"id": 3, "slug": "alimentos_carnes", "nombre": "Carnes", "parent_id": 1},
+        ]
 
     def _maybe_fail(self, what: str) -> None:
         if self._fail_on == what:
             raise CatalogUnavailable(f"fingido: {what} no disponible")
+
+    def categorias(self) -> dict:
+        self.calls["categorias"] += 1
+        self._maybe_fail("categorias")
+        return {"items": list(self.categorias_items)}
 
     def version(self) -> dict:
         self.calls["version"] += 1
@@ -176,7 +232,7 @@ def producto(
         "cabys": kw.pop("cabys", "0121999010600"),
         "unidad_medida": kw.pop("unidad_medida", "Unid"),
         "unidad_comercial_base": kw.pop("unidad_comercial_base", None),
-        "categoria_slug": kw.pop("categoria_slug", "insumos_verduras"),
+        "categoria_slug": kw.pop("categoria_slug", "alimentos_verduras"),
         "ignored": kw.pop("ignored", False),
         "last_purchase_at": kw.pop("last_purchase_at", "2026-08-27"),
         "updated_at": updated_at,

@@ -27,11 +27,19 @@ anywhere else in the UI.
 queue, the costing engine, recetas, the builder and the cost history — all
 wired to real data. The operator can cost the real menu, and every figure
 on screen can explain itself. Phase 2 (precio de venta y margen) is next.
-Screens: `/recetas`, `/recetas/{id}` (the builder), `/preparaciones`,
-`/insumos`, `/insumos/mapeo`, `/ajustes`.
+Screens: `/recetas` (the menu board), `/recetas/{id}` (the builder),
+`/recetas/{id}/cocina` (read-only, for the pass),
+`/recetas/{id}/simular` (modo simulador), `/preparaciones`, `/insumos`,
+`/insumos/{id}`, `/insumos/mapeo` (the triage queue), `/buscar`,
+`/ajustes`.
+
+**The UI redesign of `DESIGN.md` is complete** (steps 2.0-2.6, finished
+2026-09-06) and added D33-D51 on top of PLAN.md's 32. Read `DESIGN.md`
+before touching any template or `app.css`: it is the record of what each
+screen is for and which of its properties are load-bearing.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
-`/api/v1` — six read-only GET endpoints over the catalog and price history,
+`/api/v2` — six read-only GET endpoints over the catalog and price history,
 27 tests, verified against the live data. The contract lives in `PLAN.md`
 §5 *and* in that repo's own `routers/api.py` docstring; when they disagree,
 the router is the truth and this plan is the bug.
@@ -255,12 +263,69 @@ docker compose up --build        # http://localhost:8001
 PYTHONPATH=backend python -m unittest discover -s tests -v
 ```
 
+**`--build` is not optional after touching anything under `backend/app`.**
+The `web` service bind-mounts only `./data` — the code is baked into the
+image by the Dockerfile's `COPY app ./app`. So `uvicorn --reload` is
+watching the copy *inside the container*, and a host edit to a template,
+a service or a router changes nothing until the image is rebuilt. The app
+keeps serving the previous text, which looks exactly like an edit that
+silently did not work:
+
+```bash
+docker compose up -d --build web
+```
+
 **Ports are 8001 and 5434**, not 8000 and 5433 — upstream holds those, and
 both apps run on the same machine at the same time.
 
-**No build step, and no CDN.** Drag-and-drop will be a vendored,
-dependency-free module in `static/vendor/`. This app runs on the
-restaurant's own machine and must work with the internet down.
+### Migraciones de esquema
+
+**Alembic owns the schema since 2026-09-07.** `create_all` is gone, and so
+is `init_db` — there was nothing left for it to do once it stopped
+creating tables, because this app has no seed data (`app_setting`'s single
+row is created lazily by `mapeo._fila_ajustes`). `docker compose up` runs
+`alembic upgrade head` before uvicorn, spelled out in the compose
+`command` rather than hidden in an entrypoint.
+
+Same layout, same config and same commands as `restaurant-manager` (D2).
+From the host, the config is explicit; inside the container it needs
+neither `-c` nor a `cd`:
+
+```bash
+docker compose run --rm --no-deps web alembic current           # where is the DB
+docker compose run --rm --no-deps web alembic check             # does it match models.py
+docker compose run --rm --no-deps web alembic upgrade head
+docker compose run --rm --no-deps web alembic revision --autogenerate -m "what it is for"
+```
+
+Three things to know before writing one:
+
+- **`--autogenerate` writes into the image, not your checkout.** The
+  Dockerfile `COPY`s `migrations/`, so a revision generated in a plain
+  `compose run` lands inside the container and disappears with it. Bind
+  the directory over it: `-v "$PWD/backend/migrations:/srv/migrations"`.
+  Then `--build` before the migration can actually run, for exactly the
+  reason the `--build` note above gives.
+- **Always read what autogenerate wrote.** It is a first draft. The
+  baseline came out with `app_setting.id` as a SERIAL because
+  `op.create_table` cannot see a Python-side `default=1` the way
+  `create_all` can — a fresh install would have been shaped differently
+  from production over a table that has exactly one row. `env.py` sets
+  `compare_type=True` (money is `NUMERIC` with a scale that means
+  something) and `compare_server_default=False` (Postgres normalizes what
+  it stores, and the false diffs are what stop people reading these
+  files).
+- **`--reload` does not re-run a migration.** Only a container restart
+  does, so a new revision needs `docker compose up -d --build web`.
+
+The live database was moved across with `alembic stamp`, never by running
+the baseline. See that migration's docstring for what was verified and for
+why the stamp was cheap on the day and will not stay cheap.
+
+**No build step, and no CDN.** Drag-and-drop is a vendored,
+dependency-free module in `static/vendor/dnd.js`, on Pointer Events since
+D34. This app runs on the restaurant's own machine and must work with the
+internet down.
 
 ---
 
@@ -270,9 +335,10 @@ restaurant's own machine and must work with the internet down.
 backend/app/
   main.py           app wiring, `/` -> `/recetas`, `/salud`
   config.py         env-driven settings
-  db.py             engine, session, init_db. `get_db` publishes its
-                    Session on `request.state.db` -- template code reads it
-                    from there and never opens its own
+  db.py             engine and session ONLY -- it does not build the
+                    schema (Alembic does) and there is no `init_db`.
+                    `get_db` publishes its Session on `request.state.db` --
+                    template code reads it from there and never opens its own
   templating.py     Jinja env + the money/cantidad/pct filters and
                     mtime-versioned `static_url`. **`money(None)` renders an
                     em dash, never ₡0** -- that is D10 enforced at the last
@@ -282,13 +348,18 @@ backend/app/
   services/
     units.py        unit conversion. Pure, no imports beyond Decimal
     costing.py      price series -> one price, then merma. Pure
-    catalog_client.py  httpx client for upstream /api/v1. Network only
+    catalog_client.py  httpx client for upstream /api/v2. Network only
     insumo_costs.py sources -> price series -> cost, plus the Explicacion
                     the "¿Por qué este costo?" panel renders
     insumo_match.py insumo matching, pure: pack-size parsing, similarity,
                     the conflict guard. Resolves 76% of factors alone
     llm_insumo.py   Claude suggestion. Accelerator, never a dependency
-    mapeo.py        the mapping queue: pendientes, sugerir, confirmar
+    mapeo.py        the mapping queue: pendientes, sugerir, confirmar,
+                    and `_filtros` -- the ONE place the queue's filters are
+                    expressed, so what a screen counts and what a bulk
+                    operation touches cannot drift apart. Two of them are the
+                    saved `Alcance` (app policy, /ajustes) and two are the
+                    request's own (texto, categorías)
     insumos.py      insumo master data + validation. ValidationError
                     carries field-keyed Spanish messages
     catalog_sync.py    fills the mirror. Idempotent; never raises for
@@ -306,21 +377,50 @@ backend/app/
                     cost that is one line out of date looks perfectly fine
     cost_chart.py   histórico stats + the inline SVG. Pure, no Chart.js
     receta_historico.py  stores one cost per receta per day. Rides the
-                    sync; D32's backfill marks its rows by computed_at
+                    sync; D32's backfill marks its rows by computed_at.
+                    `resumen_muchas` feeds the board's sparklines in ONE
+                    query -- one per plate is forty on a real menu
+    pagination.py   the page-number strip, ported from upstream. Pure
+    busqueda.py     global search over receta/preparación/insumo names.
+                    Fixed order, never scored: a relevance blend reorders
+                    itself between keystrokes (D51)
+    primer_uso.py   the four first-run steps. Stores NOTHING -- every step
+                    is derived from rows the app already reads, so it
+                    cannot disagree with them (D50)
   routers/
-    ajustes.py      /ajustes: the sync panel and the cost-history panel.
+    # ajustes.py also runs the grouping precompute: a small budget inline on
+    # each sync, and «Agrupar» for the first pass (a daemon thread + modal,
+    # upstream's «Recategorizar» shape) -- 405 calls cannot ride a request.
+    ajustes.py      /ajustes: the sync panel, the cost-history panel and
+                    «Qué entra en la cola de mapeo» -- the mapping queue's
+                    scope (familias, días), which is app policy and NOT a
+                    control on the queue screen: a filter one stray click
+                    could flip has no business sitting above a button that
+                    dismisses everything matching it.
                     Sync runs synchronously in the request -- deliberate for
                     a local single-operator app (~2s incremental), not an
                     oversight -- and a successful sync also snapshots the
                     day's cost for every active receta
     insumos.py      /insumos: list, create, edit, archive
     mapeo.py        /insumos/mapeo. Registered BEFORE insumos.py or
-                    /insumos/{insumo_id} captures it and 422s
-    recetas.py      /recetas, /preparaciones, and the builder. Route
-                    order matters twice here: `/recetas/nueva` before
-                    `/recetas/{id}`, and `/lineas/orden` before
-                    `/lineas/{id}`. Line edits answer with the
-                    `_cuerpo.html` fragment for htmx and a 303 without it
+                    /insumos/{insumo_id} captures it and 422s. The filter bar
+                    is `hx-get` against THIS route with `hx-select="#cola"`,
+                    so a live filter goes through the same render as a page
+                    load -- there is no fragment template to drift (D16).
+                    `/insumos/mapeo/descartar` still works and is still
+                    tested but NOTHING in the UI reaches it since 2026-09-07;
+                    its docstring says why in capitals
+    busqueda.py     /buscar. A real page AND an htmx fragment: a <dialog>
+                    cannot open without script, so a Ctrl-K-only search
+                    would not exist on the no-JS path (D51)
+    recetas.py      /recetas, /preparaciones, the builder, the vista de
+                    cocina and the simulador. Route order matters twice
+                    here: `/recetas/nueva` before `/recetas/{id}`, and
+                    `/lineas/orden` before `/lineas/{id}`. Line edits answer
+                    with the `_cuerpo.html` fragment for htmx and a 303
+                    without it. **The simulador writes nothing** -- it
+                    substitutes quantities on in-memory dataclasses and
+                    costs them with the same `graph.cost_recipe` (D42)
   static/
     app.css         the palette and every component. No inline hex
     vendor/         htmx.min.js (2.0.4, same build as upstream) and
@@ -334,8 +434,23 @@ backend/app/
                     computed differently from the one on page load (D16)
     _paleta.html    the palette fragment, swapped by its own search box
     _historico.html the cost-over-time card, in upstream's shape
+    _inspector.html «¿Por qué este costo?» beside the line. Below 1280px
+                    the same markup is a drawer over the palette (D41)
+    list.html       the menu board (D38), table behind ?vista=tabla
+    cocina.html     read-only, large type, NO costs -- and no cost was ever
+                    fetched, so that cannot break by adding one {{ }} (D49)
+    _simulador.html the simulador's lines + both totals, one render path
+backend/alembic.ini   migration runner config. Under backend/ because that
+                      is the Docker build context
+backend/migrations/   env.py (URL from app.config, metadata from
+                      models.Base) + versions/. The baseline was STAMPED on
+                      the live DB, never run -- see its docstring
 tests/              unittest. dbcase.py = SQLite harness + FakeCatalogClient
-                    + `override_get_db` for the TestClient smoke tests
+                    + `override_get_db` for the TestClient smoke tests.
+                    Builds its schema with `create_all`, not with the
+                    migrations -- so a migration that drifts from
+                    models.py is NOT caught by the suite. `alembic check`
+                    is what catches that; upstream's harness does the same
 PLAN.md             the design. 32 decisions, 8 non-negotiables
 ```
 
@@ -394,11 +509,32 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
   with a Spanish UI label defined in the template, not in the service.
 - **Routes are Spanish** (`/insumos`, `/recetas`, `/preparaciones`,
   `/ajustes`), matching upstream's actual URLs.
-- Costa Rican Spanish, voseo where natural ("Agregá un insumo", "Revisá la
-  unidad"). Errors state what happened and what to do next; they do not
-  apologize.
+- **Costa Rican Spanish, and which person to use depends on what the
+  sentence is doing.** This is `restaurant-manager`'s split, and following
+  it is what makes the two apps sound like one product:
+  - **A description is impersonal third person.** "Ya se cubre el 64% de
+    las compras", "Qué se está revisando", "Promedio pesado por cantidad:
+    lo que de verdad se pagó en promedio". It is the app describing
+    itself, so it addresses nobody.
+  - **A call to action is voseo.** "Agregá un insumo", "Revisá la unidad",
+    "Elegí un producto de la lista", "Probá con otro nombre". Errors,
+    empty-state fixes and any hint that asks for something take this.
+
+  Backwards in either direction is worse than inconsistent. A description
+  in voseo is chatty and slightly wrong about who did the work ("ya cubrís
+  el 64%" — the operator did not, the mapping did); an action in third
+  person is a stiff notice nobody acts on ("se debe elegir un insumo").
+  Errors state what happened and what to do next; they do not apologize.
 - Colors come from the custom properties in `static/app.css`, ported from
   upstream. **Do not introduce new hex values inline.**
+- **A native control that ships with its own colour is a colour you did not
+  choose.** `input[type=search]`'s clear button is the live example: left
+  alone it renders in the browser's accent, a saturated blue × in an app
+  with no blue in it. It is restyled in `app.css` with a `-webkit-mask`,
+  because a mask takes its colour from `background-color` and can therefore
+  be `--muted` like every other tertiary mark -- a background image would
+  have baked a second × in at a fixed colour. Look for the same problem in
+  any other native widget before shipping one.
 - **Two alert palettes, and which one you want depends on what the thing
   is** — inherited verbatim from upstream:
   - **Amber is a queue** — something waits for the operator and clears when
@@ -462,6 +598,22 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
   costed. In the coalesced payload a `null` therefore means exactly one
   thing: a USD line whose date had no exchange rate. Drop those, count the
   drop, and never substitute the USD figure or 0.
+- **The category taxonomy is upstream's, and it has been renamed twice.**
+  `alimentos_*` → `insumos_*` (2026-09-02), then back to `alimentos_*`
+  (2026-09-06, `restaurant-manager`'s `scripts/rename_insumos_to_alimentos.py`).
+  Nothing here stores a copy of it: `categorias_disponibles` reads the
+  mirror, and `mapeo.CATEGORIAS_EN_RECETA` matches by *family prefix*
+  rather than by leaf. Propagating a rename to this app is therefore a
+  **full re-sync** (`/ajustes` → «Reconstruir todo»), not a migration —
+  the mirror is derived and disposable, so the slugs are simply refetched.
+  The one thing that does need a code change is a brand-new family, which
+  is deliberate: silently admitting an unfamiliar family into the mapping
+  queue is how `limpieza` would end up costed into a plate.
+  **The trap is on upstream's side**, and its script documents it: that
+  rename must run against the *deployed* image before `--build`, because
+  `init_db`'s seed loop only ever inserts an unrecognised slug and never
+  renames one — start new code against an old database and it creates an
+  empty duplicate beside the populated original.
 - **`unidad_medida` is almost never usable.** 85% of the live catalog says
   `Unid` or `Otros`, and `unidad_comercial` is `NULL` on 96.7% of purchase
   lines. §7.2's fallback rule 3 will rarely fire: the LLM's description
@@ -480,7 +632,7 @@ worse than an error. The full text with rationale is `PLAN.md` §3.
 
 ## Testing
 
-`unittest`, no pytest, matching upstream. 291 tests today.
+`unittest`, no pytest, matching upstream. 434 tests today.
 
 Coverage is deliberately weighted toward the nasty cases rather than the
 happy path, because the happy path is the one that gets exercised by hand
@@ -491,6 +643,11 @@ incompleteness propagating up through a nested preparación.
 
 DB-touching tests use the `tests/dbcase.py` SQLite harness rather than
 mocking the session.
+
+**`tests/manual/dnd.md` is the checklist for `dnd.js`**, which has no
+automated test and cannot have one (a DOM needs npm, D2 rules out npm).
+Run it by hand, on a mouse AND on a real tablet, after any change to that
+file or to `_cuerpo.html`/`_paleta.html`.
 
 **`tests/test_routes_smoke.py` is the one that catches what unit tests
 structurally cannot** — a template reading a context key the router stopped
@@ -546,16 +703,66 @@ bind you now:
 
 ## Known debt
 
-- **No Alembic** (D15). `create_all` creates missing tables and never
-  alters an existing one, so a column added to `models.py` after its table
-  exists needs a manual `ALTER TABLE`. Record every one of them here when
-  it happens. This is inherited from upstream *along with its documented
-  trap*, taken knowingly; wiring Alembic in both repos is a Phase 2
-  candidate.
-- **`/api/v1` upstream does not exist yet.** Everything downstream of it
-  (`catalog_sync`, the mirror, every cost) is blocked on Phase 1 step 1.0,
-  which is work in the *other* repo — including its decision-log entry and
-  doc updates, which are not optional there.
+- ~~**No Alembic** (D15)~~ — **paid off 2026-09-07**, three days after
+  `restaurant-manager` paid off its own, and the pair is on one migration
+  system again. See «Migraciones de esquema» under Stack for the commands
+  and the three traps. What is left here is the record of why it was
+  timed that way, because the timing is the transferable part:
+
+  Upstream's pre-stamp audit diffed its live schema against
+  `models.Base.metadata` and found **six** latent differences a year of
+  hand-applied `ALTER`s had accumulated — four columns the models declare
+  `NOT NULL` that production allowed NULL, a missing index, a uniqueness
+  constraint enforced through the wrong object. Not one had ever produced
+  a wrong figure, which is precisely why nobody found them.
+
+  The same three-way diff here — the baseline against `create_all`, and
+  both against the live database, column by column, index by index,
+  constraint by constraint — came back **identical**, and `alembic check`
+  reports no pending operations. This app had accumulated exactly one
+  hand-written `ALTER` (`app_setting`'s two `mapeo_*` columns, 2026-09-06)
+  and had not yet drifted. **That is the whole argument for doing it
+  now**: a baseline is free while the schema still matches the models, and
+  every hand-applied `ALTER` after this one makes it less so. The debt was
+  paid at the only moment it cost nothing.
+
+  The one real difference the verification caught was in the *tooling*,
+  not the app: `op.create_table` made `app_setting.id` a SERIAL where
+  `create_all` had inferred "no sequence" from a Python-side `default=1`.
+  A fresh install would have been shaped differently from every existing
+  one, over a table with exactly one row. Read what autogenerate writes.
+
+  `catalog_descarte` (2026-09-05, the mapping gate) landed under the old
+  regime as a NEW table, which `create_all` handled on the next start —
+  that is why the dismissal is its own table and not a column on
+  `catalog_product`, on top of the non-negotiable #3 reason (D47). Under
+  Alembic that consideration is gone: adding a column is now as cheap as
+  adding a table, so let D47's actual reason carry the decision.
+- **The upstream contract is live and stable, and this app is on `/api/v2`
+  since 2026-09-08** (upstream 0.78 published it; the only change is that
+  `/proveedores` dropped `es_servicios`, a field this app never read).
+  Upstream still serves v1 unchanged, so an older checkout keeps working;
+  the reverse is not true, and `SUPPORTED_MAJOR` refuses a server that only
+  speaks v1. Upstream 0.75 shipped the contract
+  (Phase 1 step 1.0, 2026-09-02) and `routers/api.py` has not changed a
+  byte since, through upstream's Alembic migration and its whole RRHH
+  build. Re-verified 2026-09-07 against the running instance: `/version`
+  answers `1.0`, every field `catalog_sync` reads is present and correctly
+  typed, and the mirror's product→category distribution matches upstream's
+  live one exactly. The two apps' 27 + 431 tests are green.
+
+  The audit did turn up one thing worth carrying forward about **how** the
+  contract is defended: upstream numbers its category rows and sends
+  `parent_id`, while this mirror keys on the slug. `_sync_categorias` read
+  a `parent_slug` key that upstream has never sent, so
+  `catalog_categoria.parent_slug` was NULL on all 36 live rows — invisible,
+  because nothing reads that column (the family filter matches by slug
+  *prefix*). What kept it invisible was `dbcase.FakeCatalogClient`
+  *inventing* a friendlier payload than the real one. Fixed both ends
+  2026-09-07. **A fake that is kinder than upstream is worse than no fake**
+  — it is the one failure the client/sync split exists to catch, and it
+  will not catch it if the fake is written from the mirror's wishes instead
+  of from `routers/api.py`.
 - **`densidad_g_por_ml` ships unused** (D11), and cross-dimension
   conversion is refused until it is populated. Deliberate: the column
   exists so the refusal is a policy rather than a missing field.

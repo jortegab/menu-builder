@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set es_plato = receta.tipo == 'plato' %}
+{% set seccion = 'recetas' if es_plato else 'preparaciones' %}
+{% block title %}Simulador · {{ receta.nombre }}{% endblock %}
+{% block heading %}{{ receta.nombre }}{% endblock %}
+{% block subheading %}
+<p class="head__sub">Modo simulador — probando sin guardar</p>
+{% endblock %}
+{% block acciones %}
+{#- Two ways out and they are the whole contract: apply it for real, or
+    leave and lose it. «Descartar» is a plain link back to the receta,
+    because there is nothing to undo — nothing was ever written. -#}
+<form method="post" action="/recetas/{{ receta.id }}/simular/guardar" id="form-guardar">
+  <button class="btn btn--solid" type="submit">{{ icon('check') }} Guardar los cambios</button>
+</form>
+<a class="btn btn--ghost" href="/recetas/{{ receta.id }}">Descartar</a>
+{% endblock %}
+{% block content %}
+
+{% include "recetas/_simulador.html" %}
+
+{#- «Guardar» is in the page header and the quantities are in the form
+    below it, so the button has to reach across. `form=` would be the
+    declarative way, but it has to point at inputs that are inside ANOTHER
+    form, which HTML does not allow — so the values are copied over on
+    submit instead. With JavaScript off the button still posts, and the
+    server then sees no `cant-*` at all, which `_cantidades_simuladas`
+    reads as "change nothing": the safe direction to fail in. -#}
+<script>
+(function () {
+  var guardar = document.getElementById('form-guardar');
+  if (!guardar) return;
+  guardar.addEventListener('submit', function () {
+    var sim = document.getElementById('form-sim');
+    if (!sim) return;
+    sim.querySelectorAll('input[name^="cant-"]').forEach(function (campo) {
+      var copia = document.createElement('input');
+      copia.type = 'hidden';
+      copia.name = campo.name;
+      copia.value = campo.value;
+      guardar.appendChild(copia);
+    });
+  });
+})();
+</script>
+
+{% endblock %}

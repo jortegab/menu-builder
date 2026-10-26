@@ -1,65 +1,174 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% set es_plato = tipo == 'plato' %}
 {% set seccion = 'recetas' if es_plato else 'preparaciones' %}
 {% set raiz = '/recetas' if es_plato else '/preparaciones' %}
 {% block title %}{{ 'Menú' if es_plato else 'Preparaciones' }} · Menu Builder{% endblock %}
 {% block heading %}{{ 'Menú' if es_plato else 'Preparaciones' }}{% endblock %}
+{% block acciones %}
+{#- The view toggle exists only for the menu. A preparación is an
+    ingredient, not a menu item, and «usada en N» is a column, not a card
+    (§3.6) -- so /preparaciones has one view and no switch to offer. -#}
+{% if es_plato %}
+<div class="vistas">
+  <a class="btn btn--ghost {% if vista == 'tablero' %}is-on{% endif %}"
+     href="{{ raiz }}?q={{ q }}&estado={{ estado }}&vista=tablero"
+     aria-label="Ver como tablero">{{ icon('grid') }}</a>
+  <a class="btn btn--ghost {% if vista == 'tabla' %}is-on{% endif %}"
+     href="{{ raiz }}?q={{ q }}&estado={{ estado }}&vista=tabla"
+     aria-label="Ver como tabla">{{ icon('list') }}</a>
+</div>
+{% endif %}
+<a class="btn btn--solid" href="/recetas/nueva?tipo={{ tipo }}">
+  {{ 'Nuevo plato' if es_plato else 'Nueva preparación' }}
+</a>
+{% endblock %}
 {% block content %}
 
-<div class="toolbar">
-  <form class="toolbar__filters" method="get" action="{{ raiz }}">
-    <input class="input" type="search" name="q" value="{{ q }}"
-           placeholder="{{ 'Buscar plato…' if es_plato else 'Buscar preparación…' }}">
-    <select class="input" name="estado" onchange="this.form.submit()">
-      <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activas</option>
-      <option value="archivados" {% if estado == 'archivados' %}selected{% endif %}>Archivadas</option>
-      <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todas</option>
-    </select>
-    <button class="btn btn--ghost" type="submit">Buscar</button>
-  </form>
-  <a class="btn" href="/recetas/nueva?tipo={{ tipo }}">
-    {{ 'Nuevo plato' if es_plato else 'Nueva preparación' }}
-  </a>
-</div>
+<form class="filters" method="get" action="{{ raiz }}">
+  <input class="filters__q" type="search" name="q" value="{{ q }}"
+         placeholder="{{ 'Buscar plato…' if es_plato else 'Buscar preparación…' }}">
+  <select name="estado" onchange="this.form.submit()">
+    <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activas</option>
+    <option value="archivados" {% if estado == 'archivados' %}selected{% endif %}>Archivadas</option>
+    <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todas</option>
+  </select>
+  {% if es_plato %}<input type="hidden" name="vista" value="{{ vista }}">{% endif %}
+  <button class="btn btn--ghost" type="submit">Buscar</button>
+</form>
 
+{#- El primer arranque (§3.10). Four steps whose completion the app can
+    evaluate from data it already has — there is nothing stored here, so
+    nothing to migrate under D15 and nothing that can disagree with the
+    rows the rest of the app reads.
+
+    It shows on this screen and nowhere else, and it is gone for good once
+    the fourth step is done: not collapsed, not dismissible. A card that
+    survives its own purpose is furniture. -#}
+{% if primeros_pasos %}
+<div class="card arranque">
+  <div class="bloque__h">
+    <span class="bloque__ico">{{ icon('bulb') }}</span>
+    <h2 class="card__h">Para empezar</h2>
+  </div>
+  <p class="c-muted small">
+    Cuatro pasos, una sola vez. Esta tarjeta desaparece cuando estén los
+    cuatro.
+  </p>
+  <ol class="pasos">
+    {% for p in primeros_pasos %}
+    <li class="paso{% if p.hecho %} paso--hecho{% endif %}">
+      <span class="paso__marca">
+        {% if p.hecho %}{{ icon('check', 14) }}{% else %}{{ loop.index }}{% endif %}
+      </span>
+      <span class="paso__cuerpo">
+        <span class="paso__t">{{ p.titulo }}</span>
+        <span class="paso__d">{{ p.detalle }}</span>
+      </span>
+      {% if not p.hecho %}
+      <a class="btn btn--ghost btn--xs" href="{{ p.url }}">{{ p.accion }}</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endif %}
+
+{% if vista == 'tablero' and recetas %}
+{#- The menu board (§3.6, D38). A menu has categorías and dishes people
+    picture; the board is that object, and the menu-wide question — which
+    plates are drifting? — becomes a glance instead of forty page loads.
+    The table is one click away for the "rank every plate by cost"
+    question, which the board is bad at. -#}
+{% for nombre, platos in grupos %}
+<p class="grupo"><span class="grupo__n">{{ nombre }}</span></p>
+<div class="tablero">
+  {% for r in platos %}
+  {% set c = costeos.get(r.id) %}
+  {% set h = hist.get(r.id) %}
+  <a class="plato{% if not r.activo %} plato--archivada{% endif %}" href="/recetas/{{ r.id }}">
+    <div class="plato__head">
+      <span class="plato__nom">{{ r.nombre }}</span>
+      {% if c and c.estado == 'error' %}<span class="pip pip--alert">revisar</span>
+      {% elif not r.lineas %}<span class="pip">vacía</span>
+      {% elif c and c.estado == 'incompleto' %}<span class="pip pip--warn">incompleta</span>
+      {% else %}<span class="pip pip--ok">completa</span>{% endif %}
+    </div>
+
+    {#- The largest thing on the card, per §3.6. `money(None)` renders an
+        em dash and never ₡0 -- an incomplete plate has no cost, and a
+        partial sum reads as the cost of the plate (D10). -#}
+    <span class="plato__costo{% if not c or c.costo_por_porcion is none %} plato__costo--nulo{% endif %}">
+      {{ c.costo_por_porcion | money if c else '—' }}
+    </span>
+    <span class="plato__pie">
+      por porción · {{ r.lineas | length }} línea{{ 's' if r.lineas | length != 1 }}
+      {%- if not r.activo %} · archivada{% endif %}
+    </span>
+
+    {#- Conditional, not standing furniture. Today's history is 27
+        identical points per receta, and nine flat lines are nine pieces of
+        ink saying nothing. Its *presence* is the signal that something
+        moved; below the threshold the card shows the figure alone. -#}
+    {% if h and h.spark %}
+    <div class="plato__spark">
+      {{ h.spark | safe }}
+      <span class="small {% if h.variacion > 0 %}trend--up{% else %}trend--down{% endif %}">
+        {{ '+' if h.variacion > 0 }}{{ h.variacion | pct }} en {{ h.puntos }} días
+      </span>
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<p class="c-muted small">
+  Un costo en <strong>—</strong> es una receta incompleta: algún ingrediente
+  no tiene precio todavía. Nunca se muestra una suma parcial, porque un
+  número en pantalla es un número que alguien va a usar.
+  La línea de tendencia aparece solo cuando el costo se movió; que no esté
+  quiere decir que no se movió.
+</p>
+
+{% elif recetas %}
 <div class="card">
-  {% if recetas %}
   <table class="grid">
     <thead>
       <tr>
         <th>{{ 'Plato' if es_plato else 'Preparación' }}</th>
-        <th class="num">Líneas</th>
-        {% if es_plato %}<th class="num">Porciones</th>{% else %}<th class="num">Rinde</th>{% endif %}
-        <th class="num">Costo total</th>
-        <th class="num">{{ 'Por porción' if es_plato else 'Por unidad' }}</th>
-        {% if not es_plato %}<th class="num">Usada en</th>{% endif %}
+        <th class="ta-r">Líneas</th>
+        {% if es_plato %}<th class="ta-r">Porciones</th>{% else %}<th class="ta-r">Rinde</th>{% endif %}
+        <th class="ta-r">Costo total</th>
+        <th class="ta-r">{{ 'Por porción' if es_plato else 'Por unidad' }}</th>
+        {% if not es_plato %}<th class="ta-r">Usada en</th>{% endif %}
         <th>Estado</th>
       </tr>
     </thead>
     <tbody>
       {% for r in recetas %}
       {% set c = costeos.get(r.id) %}
-      <tr class="row-link" onclick="location.href='/recetas/{{ r.id }}'">
+      <tr onclick="location.href='/recetas/{{ r.id }}'">
         <td>
           <strong>{{ r.nombre }}</strong>
           {% if not r.activo %}<span class="pip">Archivada</span>{% endif %}
-          {% if r.categoria_menu %}<div class="muted small">{{ r.categoria_menu }}</div>{% endif %}
+          {% if r.categoria_menu %}<div class="c-muted small">{{ r.categoria_menu }}</div>{% endif %}
         </td>
-        <td class="num">{{ r.lineas | length }}</td>
+        <td class="ta-r">{{ r.lineas | length }}</td>
         {% if es_plato %}
-          <td class="num">{{ r.porciones }}</td>
+          <td class="ta-r">{{ r.porciones }}</td>
         {% else %}
-          <td class="num">{{ r.rendimiento_cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(r.rendimiento_unidad, r.rendimiento_unidad) }}</td>
+          <td class="ta-r">{{ r.rendimiento_cantidad | cantidad }} {{ UNIDAD_NOMBRES.get(r.rendimiento_unidad, r.rendimiento_unidad) }}</td>
         {% endif %}
-        <td class="num">{{ c.costo_total | money if c else '—' }}</td>
-        <td class="num">
+        <td class="ta-r">{{ c.costo_total | money if c else '—' }}</td>
+        <td class="ta-r">
           {% if es_plato %}
             {{ c.costo_por_porcion | money if c else '—' }}
           {% elif c and c.costo_por_unidad_rendimiento is not none %}
-            {{ c.costo_por_unidad_rendimiento | money }}<span class="muted small">/{{ r.rendimiento_unidad }}</span>
+            {{ c.costo_por_unidad_rendimiento | money }}<span class="c-muted small">/{{ r.rendimiento_unidad }}</span>
           {% else %}—{% endif %}
         </td>
-        {% if not es_plato %}<td class="num">{{ usos.get(r.id, 0) }}</td>{% endif %}
+        {% if not es_plato %}<td class="ta-r">{{ usos.get(r.id, 0) }}</td>{% endif %}
         <td>
           {% if c and c.estado == 'error' %}<span class="pip pip--alert">revisar</span>
           {% elif not r.lineas %}<span class="pip">vacía</span>
@@ -70,28 +179,31 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted small">
+  <p class="c-muted small">
     Un costo en <strong>—</strong> es una receta incompleta: algún ingrediente
     no tiene precio todavía. Nunca se muestra una suma parcial, porque un
     número en pantalla es un número que alguien va a usar.
   </p>
-  {% else %}
-    <p class="empty">
-      {% if q %}Nada coincide con «{{ q }}».
-      {% elif es_plato %}Todavía no hay platos.
-      {% else %}Todavía no hay preparaciones.{% endif %}
-    </p>
-    <p class="empty__hint">
-      {% if es_plato %}
-        Un plato es lo que sale del menú y se cobra: lleva porciones y se
-        arma con insumos y preparaciones.
-      {% else %}
-        Una preparación es lo que la cocina hace en casa y otras recetas
-        usan como ingrediente — una salsa, un fondo, una marinada. Declara
-        cuánto rinde, y eso es lo que permite pedirla por gramo.
-      {% endif %}
-    </p>
-  {% endif %}
 </div>
+
+{% else %}
+<div class="card">
+  <p class="empty">
+    {% if q %}Nada coincide con «{{ q }}».
+    {% elif es_plato %}Todavía no hay platos.
+    {% else %}Todavía no hay preparaciones.{% endif %}
+  </p>
+  <p class="empty__hint">
+    {% if es_plato %}
+      Un plato es lo que sale del menú y se cobra: lleva porciones y se
+      arma con insumos y preparaciones.
+    {% else %}
+      Una preparación es lo que la cocina hace en casa y otras recetas
+      usan como ingrediente — una salsa, un fondo, una marinada. Declara
+      cuánto rinde, y eso es lo que permite pedirla por gramo.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
 
 {% endblock %}

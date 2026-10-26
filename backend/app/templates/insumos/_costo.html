@@ -1,0 +1,59 @@
+{% from "_icons.html" import icon %}
+{#- What this fuente would cost, recomputed live as the form changes.
+
+    It replaced the old «última compra ÷ factor» line, which was one
+    observation shown purely so a factor wrong by a thousand was visible.
+    This is the real thing: `costing.costo_unitario` over the real price
+    points, the same call `/insumos/{id}` makes. So it can say «costo» and
+    mean it -- and it still catches the factor error, because ₡3 802 por g
+    for sugar reads as wrong instantly.
+
+    The arithmetic is spelled out rather than asserted. A number the
+    operator did not compute is only trustworthy if it can show its work,
+    which is the same reason `factor_origen` and `metodo` are on screen in
+    words everywhere else in this app. -#}
+<div class="costo-prev" id="costo-preview">
+  <div class="costo-prev__h">
+    <span class="bloque__ico">{{ icon('pie') }}</span>
+    <h3 class="card__h">Costo</h3>
+  </div>
+
+  {% if costo.valor is not none %}
+    <p class="costo-prev__v">
+      {{ costo.valor | money }}<span class="costo-prev__u">/{{ costo.unidad_base }}</span>
+      {% if costo.precio_viejo %}
+      <span class="pip pip--warn">el precio más nuevo tiene {{ costo.antiguedad_dias }} días</span>
+      {% endif %}
+    </p>
+    <p class="costo-prev__x">
+      {{ METODO_LABELS.get(costo.metodo, costo.metodo) }} de
+      {{ costo.usadas }} compra{{ 's' if costo.usadas != 1 }}{% if costo.metodo != 'last' %}
+      de los últimos {{ costo.ventana_dias }} días{% endif %},
+      ÷ {{ costo.factor | cantidad }} {{ costo.unidad_base }} por compra{% if costo.merma_pct %},
+      y repartido entre lo que sobrevive a {{ costo.merma_pct | pct }} de merma{% endif %}.
+    </p>
+  {% elif not costo.factor %}
+    <p class="costo-prev__v costo-prev__v--sin">—</p>
+    <p class="costo-prev__x">
+      Sin factor no se puede saber cuánto vale una unidad de uso, y nunca se
+      asume 1. Poné el factor y el costo aparece.
+    </p>
+  {% else %}
+    <p class="costo-prev__v costo-prev__v--sin">—</p>
+    <p class="costo-prev__x">
+      Este producto no tiene compras con precio en colones, así que todavía
+      no puede costear nada.
+      {% if costo.descartadas %}
+      ({{ costo.descartadas }} compra{{ 's' if costo.descartadas != 1 }} sin
+      tipo de cambio en la factura.)
+      {% endif %}
+    </p>
+  {% endif %}
+
+  {% if costo.valor is not none and costo.descartadas %}
+  <p class="costo-prev__x">
+    {{ costo.descartadas }} compra{{ 's' if costo.descartadas != 1 }} quedaron
+    fuera por no traer tipo de cambio.
+  </p>
+  {% endif %}
+</div>

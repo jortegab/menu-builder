@@ -20,7 +20,12 @@ from dbcase import DbTestCase, FakeCatalogClient, compra, producto  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app.models import CatalogPricePoint, CatalogProduct, CatalogSyncRun  # noqa: E402
+from app.models import (  # noqa: E402
+    CatalogCategoria,
+    CatalogPricePoint,
+    CatalogProduct,
+    CatalogSyncRun,
+)
 from app.services import catalog_sync  # noqa: E402
 from app.services.catalog_client import SUPPORTED_MAJOR  # noqa: E402
 
@@ -40,7 +45,7 @@ class TestBasicSync(DbTestCase):
         p = self.db.scalar(select_one(CatalogProduct))
         self.assertEqual(p.internal_code, "11-0001")
         self.assertEqual(p.description, "PEREJIL")
-        self.assertEqual(p.categoria_slug, "insumos_verduras")
+        self.assertEqual(p.categoria_slug, "alimentos_verduras")
         self.assertEqual(p.supplier_nombre, "Inversiones Hevar")
         self.assertEqual(p.last_purchase_at, dt.date(2026, 8, 27))
 
@@ -103,7 +108,7 @@ class TestIdempotence(DbTestCase):
         catalog_sync.sync_catalog(self.db, client)
 
         renamed = FakeCatalogClient(
-            [producto(1, description="PEREJIL FRESCO", categoria_slug="insumos_frutas")],
+            [producto(1, description="PEREJIL FRESCO", categoria_slug="alimentos_frutas")],
             {1: []},
         )
         catalog_sync.sync_catalog(self.db, renamed, full=True)
@@ -111,7 +116,7 @@ class TestIdempotence(DbTestCase):
         self.assertEqual(count(self.db, CatalogProduct), 1)
         p = self.db.scalar(select_one(CatalogProduct))
         self.assertEqual(p.description, "PEREJIL FRESCO")
-        self.assertEqual(p.categoria_slug, "insumos_frutas")
+        self.assertEqual(p.categoria_slug, "alimentos_frutas")
 
     def test_the_join_key_is_internal_code_not_upstream_id(self):
         # A mapping this app has confirmed must survive anything that could
@@ -200,6 +205,30 @@ class TestPagination(DbTestCase):
         self.assertEqual(run.status, "ok")
         self.assertEqual(count(self.db, CatalogProduct), 5)
         self.assertEqual(run.productos_upserted, 5)
+
+
+class TestCategorias(DbTestCase):
+    """The category tree, whose parent link crosses the two apps' different
+    keys: upstream numbers its rows, this mirror keys on the slug."""
+
+    def test_the_parent_is_resolved_from_upstreams_id_to_a_slug(self):
+        catalog_sync.sync_catalog(self.db, FakeCatalogClient([producto(1)], {1: []}))
+        por_slug = {c.slug: c for c in self.db.scalars(select_all(CatalogCategoria))}
+        self.assertEqual(por_slug["alimentos_verduras"].parent_slug, "alimentos")
+        self.assertIsNone(por_slug["alimentos"].parent_slug)
+
+    def test_an_unresolvable_parent_lands_as_null_not_as_the_raw_id(self):
+        """A leaf whose family is not in the payload. `parent_slug` is a
+        slug column and an id written into it would compare equal to
+        nothing and read as a real value -- silence is the honest answer.
+        """
+        client = FakeCatalogClient(
+            [producto(1)],
+            {1: []},
+            categorias=[{"id": 9, "slug": "alimentos_verduras", "parent_id": 1}],
+        )
+        catalog_sync.sync_catalog(self.db, client)
+        self.assertIsNone(self.db.scalar(select_one(CatalogCategoria)).parent_slug)
 
 
 class TestFailureIsNotAnErrorState(DbTestCase):

@@ -35,6 +35,7 @@ gone. The constraints stay as the last line of defence.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -615,3 +616,89 @@ def mover_linea(db: Session, linea: RecetaLinea, delta: int) -> None:
         return
     ids[i], ids[j] = ids[j], ids[i]
     reordenar(db, linea.receta, ids)
+
+
+# ── el árbol, sin un solo precio (DESIGN.md §3.11, D43) ───────────────────
+
+
+@dataclass(frozen=True)
+class NodoCocina:
+    """One line of the kitchen view: what it is, how much, and what is
+    inside it if it is a preparación.
+
+    There is **no cost field on this dataclass, and that is the point.**
+    D43 says the vista de cocina shows no costs, and the cheap way to build
+    it would have been to call `receta_costs.costear` and have the template
+    decline to print the money. That makes the guarantee a template
+    omission -- one `{{ }}` away from being false, on the least private
+    screen in the building. Here it is structural: there is no figure to
+    leak because none was ever fetched.
+
+    It also makes the screen immune to pricing state. A cook does not care
+    that Sal has no price yet, and a receta whose graph has a problem must
+    still be able to say what goes in it -- `costear` would have answered
+    with an error state and no lines.
+    """
+
+    nombre: str
+    cantidad: Decimal
+    unidad: str
+    es_preparacion: bool
+    hijos: tuple[NodoCocina, ...] = ()
+
+
+def arbol_cocina(db: Session, receta: Receta, niveles: int = 1) -> list[NodoCocina]:
+    """The recipe as the pass reads it: names, quantities, and `niveles`
+    deep of "what goes in the salsa" per nested preparación.
+
+    **One level by default, and that is a design decision, not a limit.**
+    §3.11's question is "what goes in the salsa", asked at the stove with a
+    pan going — and the real nest here is three deep (fondo oscuro → salsa
+    criolla → plato), which fully expanded is a wall of text on a display
+    somebody is reading from two feet away. The fondo has its own page for
+    the day somebody makes the fondo.
+
+    It is capped at `graph.MAX_DEPTH` regardless of what a caller asks for:
+    a cycle that survived the write-time guard must not spin a read-only
+    screen into a hang, which is non-negotiable #5 defended again on read.
+    """
+    if niveles < 0 or niveles > graph.MAX_DEPTH:
+        niveles = min(max(niveles, 0), graph.MAX_DEPTH)
+
+    filas = list(
+        db.scalars(
+            select(RecetaLinea)
+            .where(RecetaLinea.receta_id == receta.id)
+            .order_by(RecetaLinea.orden, RecetaLinea.id)
+        )
+    )
+    salida: list[NodoCocina] = []
+    for fila in filas:
+        if fila.tipo_componente == "insumo":
+            insumo = db.get(Insumo, fila.insumo_id)
+            salida.append(
+                NodoCocina(
+                    nombre=insumo.nombre if insumo else "—",
+                    cantidad=fila.cantidad,
+                    unidad=fila.unidad,
+                    es_preparacion=False,
+                )
+            )
+            continue
+        sub = db.get(Receta, fila.componente_receta_id)
+        salida.append(
+            NodoCocina(
+                nombre=sub.nombre if sub else "—",
+                cantidad=fila.cantidad,
+                unidad=fila.unidad,
+                es_preparacion=True,
+                # Expanded inline, because "what goes in the salsa" is
+                # exactly the question asked at the stove (§3.11).
+                hijos=(
+                    tuple(arbol_cocina(db, sub, niveles - 1))
+                    if sub and niveles > 0
+                    else ()
+                ),
+            )
+        )
+    return salida

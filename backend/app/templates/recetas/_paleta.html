@@ -1,44 +1,51 @@
+{% from "_icons.html" import icon %}
 {#- The palette: what can be dropped into this receta.
 
     Every item carries its own real form with a real "Agregar" button. That
     is not a fallback bolted on afterwards -- it is the primary path, and
     the drag module in `static/vendor/dnd.js` works by submitting exactly
-    these forms. Drag is the fast way, never the only way. -#}
-<div class="paleta" id="paleta">
+    these forms. Drag is the fast way, never the only way.
 
-  <input class="input paleta__buscar" id="paleta-q" type="search" name="q" value="{{ paleta_q }}"
+    Since D34 each row carries its own grip. It is the ONLY `touch-action:
+    none` surface here, which is what lets a finger scroll this column
+    everywhere else. The HTML5 version put `touch-action:none` on the whole
+    row, which killed scrolling the palette outright on a tablet -- and
+    bought nothing, since HTML5 drag never fired on touch anyway. -#}
+<div id="paleta">
+
+  <input class="paleta__buscar" id="paleta-q" type="search" name="q" value="{{ paleta_q }}"
          placeholder="Buscar insumo o preparación…"
          hx-get="/recetas/{{ receta.id }}/paleta"
          hx-trigger="keyup changed delay:250ms, search"
          hx-target="#paleta" hx-swap="outerHTML">
 
-  <h3 class="sub">Insumos</h3>
+  <p class="hr-label"><span class="hr-label__caps">Insumos</span></p>
   {% for i in paleta_insumos %}
   <form class="pal" method="post" action="/recetas/{{ receta.id }}/lineas"
-        hx-post="/recetas/{{ receta.id }}/lineas" hx-target="#receta-cuerpo" hx-swap="outerHTML"
-        draggable="true" data-arrastrable="1">
+        hx-post="/recetas/{{ receta.id }}/lineas" hx-target="#receta-cuerpo" hx-swap="outerHTML">
+    <span class="pal__asa" aria-hidden="true">{{ icon("grip", 14) }}</span>
     <input type="hidden" name="tipo_componente" value="insumo">
     <input type="hidden" name="componente_id" value="{{ i.id }}">
     <input type="hidden" name="cantidad" value="1">
     <span class="pal__nombre">{{ i.nombre }}</span>
-    <span class="pal__unidad muted small">{{ i.unidad_base }}</span>
+    <span class="pal__unidad c-muted small">{{ i.unidad_base }}</span>
     <button class="btn btn--ghost btn--xs" type="submit">Agregar</button>
   </form>
   {% else %}
   <p class="empty small">Ningún insumo{% if paleta_q %} con «{{ paleta_q }}»{% endif %}.</p>
   {% endfor %}
 
-  <h3 class="sub">Preparaciones</h3>
+  <p class="hr-label"><span class="hr-label__caps">Preparaciones</span></p>
   {% for p in paleta_preparaciones %}
   {% if p.id != receta.id %}
   <form class="pal" method="post" action="/recetas/{{ receta.id }}/lineas"
-        hx-post="/recetas/{{ receta.id }}/lineas" hx-target="#receta-cuerpo" hx-swap="outerHTML"
-        draggable="true" data-arrastrable="1">
+        hx-post="/recetas/{{ receta.id }}/lineas" hx-target="#receta-cuerpo" hx-swap="outerHTML">
+    <span class="pal__asa" aria-hidden="true">{{ icon("grip", 14) }}</span>
     <input type="hidden" name="tipo_componente" value="receta">
     <input type="hidden" name="componente_id" value="{{ p.id }}">
     <input type="hidden" name="cantidad" value="1">
     <span class="pal__nombre">{{ p.nombre }}</span>
-    <span class="pal__unidad muted small">{{ p.rendimiento_unidad }}</span>
+    <span class="pal__unidad c-muted small">{{ p.rendimiento_unidad }}</span>
     <button class="btn btn--ghost btn--xs" type="submit">Agregar</button>
   </form>
   {% endif %}
@@ -46,7 +53,7 @@
   <p class="empty small">Ninguna preparación{% if paleta_q %} con «{{ paleta_q }}»{% endif %}.</p>
   {% endfor %}
 
-  <p class="muted small paleta__pie">
+  <p class="c-muted small paleta__pie">
     Solo aparecen las activas. Una preparación tiene que declarar cuánto
     rinde antes de que otra receta la pueda usar.
   </p>

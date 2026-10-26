@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # restaurant-manager's read-only JSON API (PLAN.md §5). This app never
     # writes to it -- non-negotiable #8.
-    upstream_api_url: str = "http://host.docker.internal:8000/api/v1"
+    upstream_api_url: str = "http://host.docker.internal:8000/api/v2"
     upstream_timeout_seconds: int = 15
 
     # Costing defaults (PLAN.md §7.4), overridable per insumo from Ajustes.

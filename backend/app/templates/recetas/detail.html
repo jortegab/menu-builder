@@ -1,47 +1,58 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% set es_plato = receta.tipo == 'plato' %}
 {% set seccion = 'recetas' if es_plato else 'preparaciones' %}
 {% block title %}{{ receta.nombre }} · Menu Builder{% endblock %}
 {% block heading %}{{ receta.nombre }}{% if not receta.activo %} <span class="pip">Archivada</span>{% endif %}{% endblock %}
+{#- The mapa de la receta lives in the subheading: what this is, and what
+    breaks if it changes. PLAN.md §10 says the first question about a
+    salsa is always which recipes use it, so those are links. -#}
+{% block subheading %}
+<p class="head__sub">
+  {% if es_plato %}Plato{% else %}Preparación{% endif %}
+  {% if receta.categoria_menu %} · {{ receta.categoria_menu }}{% endif %}
+  · <code>{{ receta.slug }}</code>
+  {% if usos %}
+    · usada en
+    {% for u in usos %}<a href="/recetas/{{ u.id }}">{{ u.nombre }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}
+</p>
+{% endblock %}
+{% block acciones %}
+<a class="btn btn--ghost" href="/recetas/{{ receta.id }}/simular">{{ icon('bulb') }} Simulador</a>
+<a class="btn btn--ghost" href="/recetas/{{ receta.id }}/cocina">{{ icon('chef') }} Vista de cocina</a>
+<a class="btn btn--ghost" href="/recetas/{{ receta.id }}/editar">Editar</a>
+<form method="post" action="/recetas/{{ receta.id }}/archivar">
+  <input type="hidden" name="activo" value="{{ '0' if receta.activo else '1' }}">
+  <button class="btn btn--ghost" type="submit">
+    {{ 'Archivar' if receta.activo else 'Reactivar' }}
+  </button>
+</form>
+{% endblock %}
 {% block content %}
 
-<div class="toolbar">
-  <div class="muted small">
-    {% if es_plato %}Plato{% else %}Preparación{% endif %}
-    {% if receta.categoria_menu %} · {{ receta.categoria_menu }}{% endif %}
-    · <code>{{ receta.slug }}</code>
-    {% if usos %}
-      · usada en
-      {% for u in usos %}<a href="/recetas/{{ u.id }}">{{ u.nombre }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
-    {% endif %}
-  </div>
-  <div class="actions">
-    <a class="btn btn--ghost" href="/recetas/{{ receta.id }}/editar">Editar</a>
-    <form method="post" action="/recetas/{{ receta.id }}/archivar">
-      <input type="hidden" name="activo" value="{{ '0' if receta.activo else '1' }}">
-      <button class="btn btn--ghost" type="submit">
-        {{ 'Archivar' if receta.activo else 'Reactivar' }}
-      </button>
-    </form>
-  </div>
-</div>
+{% if receta.descripcion %}<p class="c-muted">{{ receta.descripcion }}</p>{% endif %}
 
-{% if receta.descripcion %}<p class="muted">{{ receta.descripcion }}</p>{% endif %}
-
-<div class="builder">
-  <aside class="builder__paleta card">
+{#- Palette, plate, inspector (§3.1). The third column exists only when a
+    line is selected, so an unselected builder has no empty gutter; below
+    1280px it becomes a drawer over the palette instead (D41). -#}
+<div class="builder{% if explicacion %} builder--insp{% endif %}">
+  <aside class="paleta card">
     {% include "recetas/_paleta.html" %}
   </aside>
   <section class="builder__lineas">
     {% include "recetas/_cuerpo.html" %}
   </section>
+  {% if explicacion %}
+  {% include "recetas/_inspector.html" %}
+  {% endif %}
 </div>
 
 {% include "recetas/_historico.html" %}
 
 {% if receta.notas_produccion %}
 <div class="card">
-  <h2 class="card__title">Notas de producción</h2>
+  <h2 class="card__h">Notas de producción</h2>
   <p>{{ receta.notas_produccion }}</p>
 </div>
 {% endif %}

@@ -36,20 +36,29 @@ from .units import UnknownUnit, convert, normalize_unit
 # here is a factor-of-1000 costing error, so it errs toward `sin_resolver`
 # rather than toward guessing broadly.
 CATEGORIAS_POR_KILO = frozenset({
-    "insumos_carnes",
-    "insumos_pollo",
-    "insumos_cerdo",
-    "insumos_pescados_mariscos",
-    "insumos_verduras",
-    "insumos_frutas",
+    "alimentos_carnes",
+    "alimentos_pollo",
+    "alimentos_cerdo",
+    "alimentos_pescados_mariscos",
+    "alimentos_verduras",
+    "alimentos_frutas",
 })
 
 # Words that describe packaging rather than the ingredient. Stripped before
 # comparing descriptions, so "PECHUGA DESHUESADA BOLSA 5KG" and "FILETE DE
 # PECHUGA DESHUESADA" can be seen as the same thing.
+#
+# **Plurals are listed explicitly, and that is not redundancy.** The set is
+# matched whole-word, so "caja" filtered while "cajas" did not, and the
+# survivor then counted as evidence about the ingredient: OSOBUCO vs
+# OSOBUCO PICADO, CAJAS 3KG APROX (P/KG) scored 0.320 -- under the 0.35
+# floor, so the pair was never even offered as the same insumo. Every noun
+# here earns its plural.
 _RUIDO = frozenset({
-    "bolsa", "caja", "cj", "paq", "paquete", "pack", "bulto", "saco",
-    "bot", "botella", "lata", "pza", "pieza", "und", "unid", "unidad",
+    "bolsa", "bolsas", "caja", "cajas", "cj", "cjs", "paq", "paquete",
+    "paquetes", "pack", "packs", "bulto", "bultos", "saco", "sacos",
+    "bot", "botella", "botellas", "lata", "latas", "pza", "pzas", "pieza",
+    "piezas", "und", "unid", "unidad",
     "premium", "extra", "cong", "congelado", "congelada", "fresco", "fresca",
     "mfs", "aprox", "x", "de", "del", "la", "el", "los", "las", "con", "y",
 })
@@ -120,6 +129,14 @@ def tokens_significativos(texto: str) -> list[str]:
         # a digit nor a recognised unit on its own, so without this it
         # survived into proposed names as "Paprika 454gr".
         if w[0].isdigit():
+            continue
+        # A single letter is never an ingredient. These are the debris of
+        # a stripped suffix -- "P/KG" leaves a "p", "C/U" a "c", "S/" an
+        # "s" -- and 175 of them survive across the live catalog. On a
+        # short description they are not harmless: they inflate the token
+        # set a Jaccard overlap divides by, which is what pushed the two
+        # osobucos apart.
+        if len(w) == 1:
             continue
         try:
             normalize_unit(w)
@@ -273,6 +290,18 @@ def _hay_conflicto(a: set[str], b: set[str]) -> bool:
         if (a & izq and b & der) or (b & izq and a & der):
             return True
     return False
+
+
+def conflictivos(a: str, b: str) -> bool:
+    """Whether two descriptions actively contradict each other.
+
+    The public face of `_hay_conflicto`, exposed so a *different* proposer
+    can be vetoed by the same rule. `similitud` applies it internally; when
+    the LLM proposes a grouping instead, `mapeo.parecidos` applies it to
+    that proposal, so "PECHUGA CON HUESO is not Pechuga deshuesada" stays
+    one rule in one place no matter who suggested the merge.
+    """
+    return _hay_conflicto(set(tokens_significativos(a)), set(tokens_significativos(b)))
 
 
 def similitud(descripcion: str, nombre_insumo: str) -> float:
