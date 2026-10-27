@@ -48,7 +48,7 @@
   {% if runs %}
   <table class="grid">
     <thead>
-      <tr><th>Cuándo</th><th>Estado</th><th class="ta-r">Productos</th><th class="ta-r">Compras nuevas</th><th>Detalle</th></tr>
+      <tr><th>Cuándo</th><th>Estado</th><th class="ta-r">Productos</th><th class="ta-r">Compras nuevas</th><th class="ta-r">Corregidas</th><th class="ta-r">Quitadas</th><th>Detalle</th></tr>
     </thead>
     <tbody>
       {% for r in runs %}
@@ -61,6 +61,8 @@
         </td>
         <td class="ta-r">{{ r.productos_upserted }}</td>
         <td class="ta-r">{{ r.precios_inserted }}</td>
+        <td class="ta-r">{{ r.precios_actualizados }}</td>
+        <td class="ta-r">{{ r.precios_borrados }}</td>
         <td class="c-muted small">{{ r.error or '—' }}</td>
       </tr>
       {% endfor %}

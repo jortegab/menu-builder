@@ -49,16 +49,18 @@ class FuenteVista:
 
 @dataclass
 class ObservacionVista:
-    """One priced purchase, traceable back to the invoice line it came from."""
+    """One priced purchase, traceable back to the invoice line it came from:
+    an electronic one by its clave, a factura física's by its id (D53)."""
 
     fecha: dt.date
     proveedor: str
     descripcion: str
-    clave: str
+    clave: str | None
     precio_normalizado: Decimal
     factor: Decimal
     precio_por_unidad_base: Decimal
     en_ventana: bool
+    factura_fisica_id: int | None = None
 
 
 @dataclass
@@ -174,6 +176,7 @@ def explicar(
                         factor=factor,
                         precio_por_unidad_base=precio_uso,
                         en_ventana=punto.fecha >= desde,
+                        factura_fisica_id=punto.factura_fisica_id,
                     )
                 )
 

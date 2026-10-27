@@ -39,8 +39,9 @@ before touching any template or `app.css`: it is the record of what each
 screen is for and which of its properties are load-bearing.
 
 **Step 1.0 is done** (2026-09-02): `restaurant-manager` 0.75 ships
-`/api/v2` — six read-only GET endpoints over the catalog and price history,
-27 tests, verified against the live data. The contract lives in `PLAN.md`
+`/api/v1` — six read-only GET endpoints over the catalog and price history,
+27 tests, verified against the live data. This app reads its `/api/v3`,
+with the key upstream's Ajustes made for it (D53). The contract lives in `PLAN.md`
 §5 *and* in that repo's own `routers/api.py` docstring; when they disagree,
 the router is the truth and this plan is the bug.
 
@@ -57,11 +58,13 @@ control panel. Proven against the live API: **1 420 productos and 17 645
 compras in 46 s**, incremental re-sync in ~2 s, zero null CRC prices across
 every row.
 
-Three properties of the sync are load-bearing, and each has tests:
+Four properties of the sync are load-bearing, and each has tests:
 
 - **Idempotent by construction, not by care.** Products key on
-  `internal_code` and price points on `(clave, numero_linea)` — upstream's
-  own natural keys — so a re-run writes the same rows and changes nothing.
+  `internal_code` and price points on their line -- `(clave,
+  numero_linea)`, or `(factura_fisica_id, numero_linea)` for a line typed
+  on a factura física (D53) -- upstream's own natural keys, so a re-run
+  writes the same rows and changes nothing.
   `full=True` re-walks everything and is always a safe repair.
 - **The watermark is derived from the mirror** (`max(upstream_updated_at)`),
   never from a wall clock. Re-fetching a boundary row is free; assuming two
@@ -70,6 +73,12 @@ Three properties of the sync are load-bearing, and each has tests:
   anything upstream does — it records the run, leaves the mirror alone, and
   costing carries on against slightly older data. Only `mirror_as_of`
   advances on success, so a stale figure can be shown as stale.
+- **A product's lines are reconciled, never only appended** (D53):
+  upstream's v3 serves a line as a current figure, so each walked
+  product's points become what it serves -- restated or moved lines
+  updated in place, lines no longer served deleted. Figures are compared
+  at their column's scale (`_valores`), or a line upstream sends with more
+  decimals than the column keeps reads as restated on every sync.
 
 **Step 1.2 is done too** (2026-09-02): insumo CRUD at `/insumos` —
 create, edit, archive, search, and the three configuration fields.
@@ -348,7 +357,8 @@ backend/app/
   services/
     units.py        unit conversion. Pure, no imports beyond Decimal
     costing.py      price series -> one price, then merma. Pure
-    catalog_client.py  httpx client for upstream /api/v2. Network only
+    catalog_client.py  httpx client for upstream /api/v3, the key in
+                    X-Api-Key (a 401 names UPSTREAM_API_KEY). Network only
     insumo_costs.py sources -> price series -> cost, plus the Explicacion
                     the "¿Por qué este costo?" panel renders
     insumo_match.py insumo matching, pure: pack-size parsing, similarity,
@@ -738,12 +748,13 @@ bind you now:
   `catalog_product`, on top of the non-negotiable #3 reason (D47). Under
   Alembic that consideration is gone: adding a column is now as cheap as
   adding a table, so let D47's actual reason carry the decision.
-- **The upstream contract is live and stable, and this app is on `/api/v2`
-  since 2026-09-08** (upstream 0.78 published it; the only change is that
-  `/proveedores` dropped `es_servicios`, a field this app never read).
-  Upstream still serves v1 unchanged, so an older checkout keeps working;
-  the reverse is not true, and `SUPPORTED_MAJOR` refuses a server that only
-  speaks v1. Upstream 0.75 shipped the contract
+- **This app is on upstream's `/api/v3` since 2026-10-26** (D53: the lines
+  typed on a factura física, and a served line a current figure; v2, on
+  2026-09-08, had only dropped `es_servicios`, a field this app never
+  read). Upstream still serves v1 and v2 unchanged, so an older checkout
+  keeps working; the reverse is not true, and `SUPPORTED_MAJOR` refuses a
+  server that does not speak v3. Every request needs the key
+  (`UPSTREAM_API_KEY`), or upstream answers 401. Upstream 0.75 shipped the contract
   (Phase 1 step 1.0, 2026-09-02) and `routers/api.py` has not changed a
   byte since, through upstream's Alembic migration and its whole RRHH
   build. Re-verified 2026-09-07 against the running instance: `/version`

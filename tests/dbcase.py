@@ -251,10 +251,13 @@ def compra(
     **kw,
 ) -> dict:
     """One `/compras` item. Money arrives as strings, exactly as upstream
-    sends it -- that is the contract this app parses with `Decimal`.
+    sends it -- that is the contract this app parses with `Decimal`. An
+    electronic line, as v3 serves it: its `origen` and no factura.
     """
     payload = {
+        "origen": "electronica",
         "clave": clave,
+        "factura_fisica_id": None,
         "numero_linea": numero_linea,
         "fecha": fecha,
         "cantidad": kw.pop("cantidad", "3.000"),
@@ -269,3 +272,12 @@ def compra(
     }
     payload.update(kw)
     return payload
+
+
+def compra_fisica(factura_fisica_id: int = 88, numero_linea: int = 1, **kw) -> dict:
+    """A line typed on a factura física, as v3 serves it (upstream's D204):
+    no clave, keyed on its factura."""
+    return compra(
+        numero_linea=numero_linea, origen="fisica", clave=None,
+        factura_fisica_id=factura_fisica_id, **kw,
+    )

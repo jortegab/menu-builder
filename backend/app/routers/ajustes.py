@@ -102,7 +102,9 @@ def alcance_mapeo(
 @router.post("/ajustes/sincronizar")
 def sincronizar(db: Session = Depends(get_db), full: str = ""):
     with CatalogClient(
-        settings.upstream_api_url, timeout_seconds=settings.upstream_timeout_seconds
+        settings.upstream_api_url,
+        timeout_seconds=settings.upstream_timeout_seconds,
+        api_key=settings.upstream_api_key,
     ) as client:
         run = catalog_sync.sync_catalog(db, client, full=bool(full))
     # The snapshot rides the sync because a sync is *when a cost can have

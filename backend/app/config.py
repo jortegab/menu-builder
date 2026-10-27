@@ -15,8 +15,13 @@ class Settings(BaseSettings):
 
     # restaurant-manager's read-only JSON API (PLAN.md §5). This app never
     # writes to it -- non-negotiable #8.
-    upstream_api_url: str = "http://host.docker.internal:8000/api/v2"
+    upstream_api_url: str = "http://host.docker.internal:8000/api/v3"
     upstream_timeout_seconds: int = 15
+    # The key restaurant-manager's Ajustes → API y MCP created for this app
+    # (its D107), sent as `X-Api-Key` on every request. Upstream answers 401
+    # to anything without an active one; blank sends none, and every sync is
+    # then a failed run that says so on Ajustes (D53).
+    upstream_api_key: str = ""
 
     # Costing defaults (PLAN.md §7.4), overridable per insumo from Ajustes.
     costing_method_default: str = "median_window"

@@ -70,20 +70,28 @@ PYTHONPATH=backend python -m unittest discover -s tests -v
 ## Cómo se conecta con `restaurant-manager`
 
 Los dos apps se hablan por una sola puerta: una **API de solo lectura**
-(`/api/v1`) que `restaurant-manager` expone y que este app consume.
+(`/api/v3`) que `restaurant-manager` expone y que este app consume.
 
 ```
   facturas electrónicas (Gmail)
              |
              v
-    restaurant-manager  ──── GET /api/v1/productos ────►  menu-builder
-    (catálogo, precios)      GET /api/v1/.../compras      (insumos, recetas)
+    restaurant-manager  ──── GET /api/v3/productos ────►  menu-builder
+    (catálogo, precios)      GET /api/v3/.../compras      (insumos, recetas)
 ```
 
 **Este app nunca le escribe a `restaurant-manager`.** Ni una categoría, ni
 un mapeo, ni una corrección. Si un producto está mal categorizado, se
 arregla allá. La regla vale en los dos sentidos: cada app es dueña de sus
 propios datos y el otro solo lee.
+
+**La API pide una clave.** Se crea en `restaurant-manager`, en Ajustes →
+API y MCP, y se pone en `UPSTREAM_API_KEY` del `.env` de este app; sin ella
+cada sincronización falla, y Ajustes lo dice. Desde la v3 llegan también
+las líneas de las facturas físicas, y una compra que se corrige allá (una
+factura física editada, un ajuste de cantidades) se corrige acá en la
+sincronización siguiente: Ajustes muestra cuántas se corrigieron y cuántas
+se quitaron.
 
 Esa API **ya está construida** (`restaurant-manager` 0.75, 2 de setiembre
 de 2026): seis endpoints de solo lectura, con sus pruebas, verificados
